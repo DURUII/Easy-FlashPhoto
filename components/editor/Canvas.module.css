@@ -144,17 +144,99 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
   width: 100%;
-  max-width: 400px;
+  max-width: 720px;
+  padding: 32px 16px;
 }
 
-.uploadButton {
-  width: 100%;
-  padding: 48px 24px;
-  border: 1px dashed var(--gray-800);
+/* .uploadStage removed */
+
+.uploadCard {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.heroTitle {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 3.2vw, 32px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--white);
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.heroMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  max-width: 520px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.heroMeta:hover {
+  color: var(--white);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
+}
+
+.heroSpacer {
+  width: 14px;
+}
+
+.heroLetter {
+  opacity: 0.45;
+  transition: opacity 0.05s linear;
+}
+
+.heroFlicker {
+  opacity: 1;
+}
+
+.heroTitle:hover .heroLetter {
+  opacity: 0.95;
+}
+
+.pixelGrid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 10px 10px;
+  opacity: 0.25;
+  mix-blend-mode: screen;
+  z-index: 1;
+  pointer-events: none;
+}
+
+
+.uploadButton {
+  width: 50vw;
+  max-width: 600px; /* Adjusted max-width slightly for 50% width */
+  padding: 48px 24px;
+  border: 1px dashed var(--gray-700);
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.35);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 14px;
@@ -163,11 +245,15 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  text-transform: uppercase;
+  position: relative;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.06);
 }
 
 .uploadButton:hover {
   border-color: var(--white);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 26px rgba(255, 255, 255, 0.12);
 }
 
 .sampleButton {
@@ -237,6 +323,10 @@
 @keyframes scan {
   0% { top: -20%; }
   100% { top: 120%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroLetter { transition: none; }
 }
 
 .vignette {

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './Canvas.module.css'
 import type { Point } from '@/hooks/useSAM'
 
@@ -64,6 +64,36 @@ export default function Canvas({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const overlaySrc = mode === 'previewing' ? previewMaskSrc : maskImageSrc
+  const [flickerIndices, setFlickerIndices] = useState<number[]>([])
+  const heroText = useMemo(() => 'POWER-ON GLITCH', [])
+  const heroLetters = useMemo(() => heroText.split(''), [heroText])
+
+  useEffect(() => {
+    if (imageSrc) return
+
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (media.matches) return
+
+    const activeIndices = heroLetters
+      .map((ch, idx) => (ch === ' ' ? -1 : idx))
+      .filter(idx => idx >= 0)
+
+    const intervalId = window.setInterval(() => {
+      const count = Math.floor(Math.random() * 4)
+      const picks: number[] = []
+      const pool = [...activeIndices]
+
+      for (let i = 0; i < count; i += 1) {
+        if (pool.length === 0) break
+        const pickIndex = Math.floor(Math.random() * pool.length)
+        picks.push(pool.splice(pickIndex, 1)[0])
+      }
+
+      setFlickerIndices(picks)
+    }, 150)
+
+    return () => window.clearInterval(intervalId)
+  }, [imageSrc, heroLetters])
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (mode !== 'editing' || !onPointAdd) return
@@ -101,20 +131,45 @@ export default function Canvas({
         onDrop={handleDrop}
       >
         <div className={styles.placeholder}>
-          <button 
-            className={styles.uploadButton}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            UPLOAD IMAGE
-            <span className={styles.dropHint}>OR DRAG & DROP</span>
-          </button>
-          
-          <button 
-            className={styles.sampleButton}
-            onClick={onUseSample}
-          >
-            USE SAMPLE IMAGE
-          </button>
+          <div className={styles.pixelGrid} />
+
+          <div className={styles.uploadCard}>
+            <div className={styles.hero}>
+              <div className={styles.heroTitle} aria-label={heroText}>
+                {heroLetters.map((ch, i) => (
+                  <span
+                    key={`${ch}-${i}`}
+                    className={[
+                      styles.heroLetter,
+                      ch === ' ' ? styles.heroSpacer : '',
+                      flickerIndices.includes(i) ? styles.heroFlicker : ''
+                    ].join(' ')}
+                    aria-hidden="true"
+                  >
+                    {ch === ' ' ? '\u00A0' : ch}
+                  </span>
+                ))}
+              </div>
+              <div className={styles.heroMeta}>
+                MAKE YOUR FLASHPHOTO — NO EDITING SOFTWARE
+              </div>
+            </div>
+
+            <button 
+              className={styles.uploadButton}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              UPLOAD IMAGE
+              <span className={styles.dropHint}>OR DRAG & DROP</span>
+            </button>
+            
+            <button 
+              className={styles.sampleButton}
+              onClick={onUseSample}
+            >
+              USE SAMPLE IMAGE
+            </button>
+          </div>
 
           <input 
             ref={fileInputRef}

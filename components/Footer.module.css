@@ -41,22 +41,29 @@
   gap: 0.75rem;
 }
 
+.right {
+  align-items: center;
+}
+
 /* Model status breathing light */
 .statusLight {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background-color 0.6s var(--ease-out-expo);
 }
 
 .statusLight.ready {
   background: var(--accent-green);
   animation: breathe 2s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(0, 255, 0, 0.45);
 }
 
 .statusLight.loading {
   background: var(--accent-yellow);
   animation: breathe 1s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(255, 214, 102, 0.45);
 }
 
 /* Tech info with tooltip */
@@ -68,10 +75,14 @@
 .link {
   font-family: var(--font-body);
   font-size: 0.625rem;
+  line-height: 1;
   text-transform: uppercase;
   color: var(--text-secondary);
   transition: color var(--duration-fast) ease;
   letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
 }
 
 .techInfo:hover .link {
@@ -97,6 +108,7 @@
 .techLabel {
   font-family: var(--font-body);
   font-size: 0.5rem;
+  line-height: 1;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -105,6 +117,7 @@
 .techValue {
   font-family: var(--font-body);
   font-size: 0.625rem;
+  line-height: 1;
   color: var(--accent-green);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -113,6 +126,10 @@
 .divider {
   font-size: 0.625rem;
   color: var(--gray-600);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
 }
 
 .social {
@@ -131,6 +148,10 @@
   transition: color var(--duration-fast) ease;
 }
 
+.socialIcon svg {
+  display: block;
+}
+
 .socialIcon:hover {
   color: var(--text-primary);
 }
@@ -144,12 +165,16 @@
 .donateButton {
   font-family: var(--font-body);
   font-size: 0.625rem;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 0.375rem 0.75rem;
+  padding: 0.2rem 0.3rem;
   background: transparent;
   color: var(--text-secondary);
   transition: all var(--duration-fast) ease;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
 }
 
 .donate:hover .donateButton {
@@ -190,6 +215,7 @@
 .qrHint {
   font-family: var(--font-body);
   font-size: 0.5rem;
+  line-height: 1;
   text-align: center;
   color: var(--text-secondary);
   text-transform: uppercase;

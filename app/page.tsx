@@ -224,6 +224,10 @@ export default function Home() {
     styleRef.current = previewStyle
   }, [previewStyle])
 
+  useEffect(() => {
+    initModel()
+  }, [initModel])
+
   // --- Effects ---
 
   // Auto-encode image when uploaded

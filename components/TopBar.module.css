@@ -20,6 +20,15 @@
   font-size: 18px;
   letter-spacing: -0.02em;
   margin-right: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+  color: var(--gray-400);
+}
+
+.logo:hover {
+  color: var(--white);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 
 .status {
