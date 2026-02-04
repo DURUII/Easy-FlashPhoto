@@ -246,10 +246,14 @@ export default function Home() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [undoStack, setUndoStack] = useState<Subject[][]>([])
+  const [redoStack, setRedoStack] = useState<Subject[][]>([])
+  const [fakeProgress, setFakeProgress] = useState(0)
   const [hasMounted, setHasMounted] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const sourceContainerRef = useRef<HTMLDivElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -266,6 +270,21 @@ export default function Home() {
     encodeImage, 
     decode
   } = useSAM(true) // Start loading model immediately
+
+  // Fake progress for analysis (approx 12s)
+  useEffect(() => {
+    if (samStatus === 'loading_model' || samStatus === 'encoding') {
+      const interval = setInterval(() => {
+        setFakeProgress(prev => {
+          if (prev >= 99) return 99
+          return prev + 1
+        })
+      }, 120) // 12s to reach ~100%
+      return () => clearInterval(interval)
+    } else {
+      setFakeProgress(0)
+    }
+  }, [samStatus])
 
   useEffect(() => {
     if (!PERSIST_ENABLED || !hasMounted) return
@@ -417,6 +436,7 @@ export default function Home() {
       try {
         // Save current state for undo
         setUndoStack(prev => [...prev, appState.selectedSubjects])
+        setRedoStack([]) // Clear redo stack on new action
 
         const maskResult = await decode(newPoints)
         const coloredMaskUrl = createColoredMaskUrl(maskResult, subject.color)
@@ -459,6 +479,7 @@ export default function Home() {
       try {
         // Save current state for undo
         setUndoStack(prev => [...prev, appState.selectedSubjects])
+        setRedoStack([]) // Clear redo stack on new action
 
         const maskResult = await decode([newPoint])
         const color = generateColor(appState.selectedSubjects.length)
@@ -516,10 +537,23 @@ export default function Home() {
   const handleUndo = useCallback(() => {
     if (undoStack.length > 0) {
       const previousState = undoStack[undoStack.length - 1]
+      const currentState = appState.selectedSubjects
+      setRedoStack(prev => [...prev, currentState])
       setUndoStack(prev => prev.slice(0, -1))
       updateAppState({ selectedSubjects: previousState })
     }
-  }, [undoStack])
+  }, [undoStack, appState.selectedSubjects])
+
+  // Redo last point (Command+Shift+Z)
+  const handleRedo = useCallback(() => {
+    if (redoStack.length > 0) {
+      const nextState = redoStack[redoStack.length - 1]
+      const currentState = appState.selectedSubjects
+      setUndoStack(prev => [...prev, currentState])
+      setRedoStack(prev => prev.slice(0, -1))
+      updateAppState({ selectedSubjects: nextState })
+    }
+  }, [redoStack, appState.selectedSubjects])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -532,8 +566,13 @@ export default function Home() {
         handleFinishEditing()
       }
 
-      // Command+Z / Ctrl+Z = Undo
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+      // Command+Shift+Z = Redo
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        handleRedo()
+      }
+      // Command+Z = Undo
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault()
         handleUndo()
       }
@@ -541,7 +580,7 @@ export default function Home() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentStep, editingSubjectId, handleFinishEditing, handleUndo])
+  }, [currentStep, editingSubjectId, handleFinishEditing, handleUndo, handleRedo])
 
   // Upload handler
   const handleUpload = (file?: File) => {
@@ -653,7 +692,7 @@ export default function Home() {
         }
         return 'LOADING MODEL...'
       case 'encoding':
-        return 'ANALYZING IMAGE...'
+        return `ANALYZING IMAGE... ${fakeProgress}%`
       case 'decoding':
         return 'GENERATING MASK...'
       default:
@@ -671,16 +710,30 @@ export default function Home() {
       case 1: // UPLOAD
         return (
           <div className={styles.uploadStep}>
-            <label 
-              className={styles.uploadZone}
-              onDragOver={(e) => e.preventDefault()}
+            <div 
+              className={`${styles.uploadZone} ${isDragging ? styles.dragActive : ''}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+              }}
               onDrop={(e) => { 
                 e.preventDefault()
+                setIsDragging(false)
                 const file = e.dataTransfer.files[0]
                 if (file) handleUpload(file)
               }}
             >
               <input 
+                ref={fileInputRef}
                 type="file" 
                 accept="image/*" 
                 onChange={handleFileSelect}
@@ -692,7 +745,8 @@ export default function Home() {
                 <p className={styles.uploadHint}>OR CLICK TO BROWSE</p>
                 <div className={styles.uploadFormats}>JPG / PNG / WEBP</div>
               </div>
-            </label>
+            </div>
+            
             <button 
               className={styles.sampleButton}
               onClick={() => handleUpload()}
@@ -711,19 +765,6 @@ export default function Home() {
                 CLEAR CACHED SAMPLE
               </button>
             )}
-            
-            {/* Model loading status - show on upload page */}
-            <div className={styles.modelStatus}>
-              {samStatus === 'loading_model' && (
-                <>
-                  <div className={styles.statusSpinner} />
-                  <span>{statusText}</span>
-                </>
-              )}
-              {(samStatus === 'model_ready' || samStatus === 'encoded') && (
-                <span className={styles.modelReady}>MODEL READY</span>
-              )}
-            </div>
           </div>
         )
 
@@ -733,7 +774,16 @@ export default function Home() {
             {/* Left: Source Image with Mask Overlay */}
             <div className={styles.sourcePanel}>
               <div className={styles.panelHeader}>
-                <span>SOURCE</span>
+                <div className={styles.headerTitleArea}>
+                  <span>SOURCE</span>
+                  <span className={styles.headerHint}>
+                    {!isEncoded 
+                      ? (samStatus === 'loading_model' ? 'LOADING MODEL...' : 'ANALYZING IMAGE...')
+                      : editingSubjectId !== null 
+                        ? 'LEFT + / RIGHT - / CLICK DONE WHEN FINISHED' 
+                        : 'CLICK TO SELECT A SUBJECT'}
+                  </span>
+                </div>
                 <div className={styles.headerActions}>
                   {editingSubjectId !== null && (
                     <>
@@ -802,9 +852,7 @@ export default function Home() {
                         borderColor: editingSubject.color,
                         background: point.label === 1 ? editingSubject.color : 'transparent',
                       }}
-                    >
-                      {point.label === 0 ? '−' : '+'}
-                    </div>
+                    />
                   ))}
                 </div>
 
@@ -821,13 +869,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <p className={styles.sourceHint}>
-                {!isEncoded 
-                  ? (samStatus === 'loading_model' ? 'LOADING MODEL...' : 'ANALYZING IMAGE...')
-                  : editingSubjectId !== null 
-                    ? 'LEFT + / RIGHT - / CLICK DONE WHEN FINISHED' 
-                    : 'CLICK TO SELECT A SUBJECT'}
-              </p>
             </div>
 
             {/* Right: Subject List */}
@@ -1047,7 +1088,7 @@ export default function Home() {
 
   return (
     <main className={styles.main}>
-      <Header modelProgress={modelProgress} modelReady={samStatus === 'model_ready' || samStatus === 'encoded'}>
+      <Header>
         <StepNav 
           steps={STEPS} 
           currentStep={currentStep} 
@@ -1059,7 +1100,10 @@ export default function Home() {
         {renderContent()}
       </div>
 
-      <Footer />
+      <Footer 
+        modelProgress={modelProgress} 
+        modelReady={samStatus === 'model_ready' || samStatus === 'encoded'} 
+      />
     </main>
   )
 }

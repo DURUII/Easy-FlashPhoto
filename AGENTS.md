@@ -1,0 +1,63 @@
+# ImageGlitch
+
+**Web-based Glitch Art Video Generator with "Power-On" Effect**
+
+## Core Concept
+
+Transform static photos into dynamic videos where subjects light up sequentially, creating an "electrocuted" visual effect synced with music rhythm.
+
+## Workflow
+
+```
+UPLOAD -> SELECT -> EXPORT
+```
+
+### 1. UPLOAD
+- Drag & drop or click to upload images (JPG/PNG/WEBP)
+- Sample images available for quick testing
+
+### 2. SELECT (Core Interaction)
+- **Left-click**: Add positive point → generate mask → auto-number ①
+- **Right-click**: Add negative point → exclude area
+- **Continue clicking**: Add more subjects (②③④...)
+- **Drag to reorder**: Adjust power-on sequence in sidebar
+- **Shortcuts**: Cmd+Z / Cmd+Shift+Z / Enter
+
+### 3. EXPORT
+- **Glitch Presets**: SOLID COLOR / BRIGHTENED
+- **Audio Track**: Built-in BGM options
+- **Format**: MP4 / GIF / Live Photo
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 14 + React 18 |
+| ML Model | Transformers.js + SAM (slimsam-77-uniform) |
+| Styling | CSS Modules |
+| Architecture | Browser-local + Web Worker |
+
+## Key Files
+
+| Path | Purpose |
+|------|---------|
+| `app/page.tsx` | Main page, state management, mask algorithm |
+| `hooks/useSAM.ts` | SAM model wrapper |
+| `components/Header.tsx` | Top navigation |
+| `components/Footer.tsx` | Bottom status bar |
+
+## Design Guidelines\
+
+> You may refer to [./docs/DESIGN.md] for more details.
+
+- No emojis in UI (use text labels or SVG icons)
+- Black background + white text, functional colors only for subject markers
+- Typography: Space Grotesk (Sans) / Space Mono (Mono)
+- ALL CAPS for navigation/labels
+- Animation curve: `--ease-out-expo`
+
+## Development Status
+
+> You must maintain the TODO list here.
+
+- [x] the core segmentation algorithm has been implemented

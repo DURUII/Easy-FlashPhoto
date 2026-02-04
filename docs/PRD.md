@@ -1,4 +1,4 @@
-# Image-Glitch
+# Image-Glitch MVP
 
 通电风照片：当照片里的元素依次被点亮，就像被接通了电极。
 @flashphoto @infp @ig @照片通电 @照片闪烁 @imageglitch
