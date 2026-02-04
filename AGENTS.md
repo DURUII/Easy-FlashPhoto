@@ -61,3 +61,4 @@ UPLOAD -> SELECT -> EXPORT
 > You must maintain the TODO list here.
 
 - [x] the core segmentation algorithm has been implemented
+- [ ] the ux needs major redesign

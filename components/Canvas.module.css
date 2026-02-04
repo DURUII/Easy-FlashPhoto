@@ -1,0 +1,66 @@
+.canvas {
+  position: relative;
+  background: #E5E5E5; /* Placeholder gray */
+  border: 2px dashed #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  cursor: crosshair;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.canvasImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.marker {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--marker-color, #000);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary); /* Cream */
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  transition: all 0.2s ease;
+  z-index: 10;
+  box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+}
+
+.marker.active {
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+  z-index: 20;
+}
+
+/* Upload State in Canvas */
+.uploadPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-primary);
+}
+
+.uploadIcon {
+  width: 48px;
+  height: 48px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}

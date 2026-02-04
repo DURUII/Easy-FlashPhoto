@@ -1,0 +1,73 @@
+.main {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--black);
+  color: var(--white);
+  overflow: hidden;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  border-top: 1px solid var(--gray-900);
+}
+
+.canvasArea {
+  flex: 1;
+  width: 100%;
+  background: #0a0a0a;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
+}
+
+/* Initial State: Only Canvas Area is visible (as Upload), Dock and Timeline hidden */
+.dockArea {
+  flex: 0 0 0px;
+  width: 0;
+  overflow: hidden;
+  background: var(--black);
+  border-left: 0px solid var(--gray-900);
+  border-right: 0px solid var(--gray-900);
+  z-index: 10;
+  opacity: 0;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timelineArea {
+  flex: 0 0 0px;
+  width: 0;
+  overflow: hidden;
+  background: var(--black);
+  opacity: 0;
+  transform: translateX(20px);
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ready State: Expand to 3-column layout (45:10:45) */
+.layoutReady .dockArea {
+  flex: 0 0 80px;
+  width: 80px;
+  opacity: 1;
+  border-left-width: 1px;
+  border-right-width: 1px;
+}
+
+.layoutReady .timelineArea {
+  flex: 1 1 auto;
+  width: auto;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.layoutReady .canvasArea {
+  flex: 0 0 var(--canvas-width, 45%);
+  width: var(--canvas-width, 45%);
+  overflow-x: auto;
+  overflow-y: hidden;
+}

@@ -1,0 +1,47 @@
+.nav {
+  display: flex;
+  align-items: center;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  color: var(--text-secondary);
+  transition: all var(--duration-fast) ease;
+  background: transparent;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.step:hover {
+  color: var(--text-primary);
+}
+
+.step.active {
+  background: var(--text-primary);
+  color: var(--bg-primary);
+}
+
+.step.completed {
+  color: var(--text-primary);
+  border-color: var(--gray-600);
+}
+
+.stepNumber {
+  font-weight: 700;
+}
+
+.stepTitle {
+  font-weight: 500;
+}

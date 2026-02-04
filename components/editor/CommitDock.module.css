@@ -1,0 +1,66 @@
+.dock {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-right: 1px solid var(--gray-900);
+  width: 80px;
+  align-items: center;
+  background: var(--black);
+  height: 100%;
+}
+
+.actionButton {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px; /* Minimal rounding */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--gray-800);
+  color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  gap: 4px;
+}
+
+.actionButton:hover:not(:disabled) {
+  border-color: var(--white);
+  background: var(--gray-900);
+}
+
+.actionButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: var(--gray-900);
+}
+
+.addButton {
+  border-color: var(--white);
+  background: var(--white);
+  color: var(--black);
+}
+
+.addButton:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #f0f0f0;
+}
+
+.resetButton {
+  color: var(--gray-400);
+}
+
+.exitButton {
+  margin-top: auto; /* Push to bottom if desired, or keep grouped */
+  color: var(--gray-400);
+  border-color: var(--gray-800);
+}
+
+.icon {
+  font-size: 18px;
+  line-height: 1;
+}

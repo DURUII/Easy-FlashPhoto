@@ -1,0 +1,90 @@
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: var(--bar-height);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--gray-900);
+  background: var(--black);
+}
+
+.left, .center, .right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  margin-right: 16px;
+}
+
+.status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--black);
+  background: var(--white);
+  position: relative;
+  display: inline-block;
+}
+
+.status:hover {
+  animation: glitchText 0.3s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@keyframes glitchText {
+  0%   { transform: translate(0); }
+  20%  { transform: translate(-2px, 2px); }
+  40%  { transform: translate(-2px, -2px); }
+  60%  { transform: translate(2px, 2px); }
+  80%  { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+.actionButton {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--white);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+.actionButton:hover:not(:disabled) {
+  border-color: var(--gray-600);
+}
+
+.actionButton:disabled {
+  color: var(--gray-600);
+  cursor: not-allowed;
+}
+
+.exportButton {
+  background: var(--white);
+  color: var(--black);
+  border: 1px solid var(--white);
+  padding: 8px 16px;
+  font-weight: 600;
+}
+
+.exportButton:hover {
+  background: transparent;
+  color: var(--white);
+}
+
+.toggleActive {
+  border-color: var(--white);
+  color: var(--black);
+  background: var(--white);
+}

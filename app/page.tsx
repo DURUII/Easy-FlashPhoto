@@ -1,63 +1,27 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
+import { zipSync } from 'fflate'
+import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { fetchFile } from '@ffmpeg/util'
+import { GIFEncoder, quantize, applyPalette } from 'gifenc'
 import styles from './page.module.css'
-import Header from '@/components/Header'
-import StepNav from '@/components/StepNav'
+import TopBar from '@/components/TopBar'
 import Footer from '@/components/Footer'
+import Canvas from '@/components/editor/Canvas'
+import CommitDock from '@/components/editor/CommitDock'
+import AssetsTimeline from '@/components/editor/AssetsTimeline'
+import ExportModal from '@/components/ExportModal'
 import { useSAM, type Point, type MaskResult } from '@/hooks/useSAM'
+import type { Subject, BGM, AppMode } from '@/types'
 
-export interface Subject {
-  id: number
-  name: string
-  color: string
-  points: Point[]
-  maskResult?: MaskResult
-  coloredMaskUrl?: string
-  previewUrl?: string
-  maskScore?: number
-  brightenedMaskUrl?: string // Original image with mask area brightened
-}
+// --- Helpers (Previous helpers preserved) ---
 
-export interface BGM {
-  id: number
-  name: string
-  duration: string
-  file: string | null
-}
-
-export type GlitchPreset = 'solid' | 'brightened'
-
-export interface AppState {
-  uploadedImage: string | null
-  selectedSubjects: Subject[]
-  selectedBgm: BGM | null
-  exportFormat: 'mp4' | 'gif' | 'livephoto'
-  glitchPreset: GlitchPreset
-}
-
-const STEPS = [
-  { id: 1, title: 'UPLOAD', shortTitle: '01' },
-  { id: 2, title: 'SELECT', shortTitle: '02' },
-  { id: 3, title: 'EXPORT', shortTitle: '03' },
-]
-
-const MOCK_DATA = {
-  image: '/examples/input-sample.jpg',
-  bgmList: [
-    { id: 1, name: 'ALL MY FELLAS', duration: '0:30', file: '/bgm/all-my-fellas.mp3' },
-    { id: 2, name: 'ELECTRIC PULSE', duration: '0:25', file: null },
-    { id: 3, name: 'NO AUDIO', duration: '--', file: null },
-  ],
-}
-
-// Generate colors for subjects
 const generateColor = (index: number) => {
   const colors = ['#FFFFFF', '#00FF00', '#FF00FF', '#00FFFF', '#FFFF00', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7']
   return colors[index % colors.length]
 }
 
-// Create colored mask data URL from original mask
 const createColoredMaskUrl = (maskResult: MaskResult, color: string): string => {
   const { width, height, imageData } = maskResult
   const canvas = document.createElement('canvas')
@@ -65,20 +29,17 @@ const createColoredMaskUrl = (maskResult: MaskResult, color: string): string => 
   canvas.height = height
   const ctx = canvas.getContext('2d')!
   
-  // Parse color
   const r = parseInt(color.slice(1, 3), 16)
   const g = parseInt(color.slice(3, 5), 16)
   const b = parseInt(color.slice(5, 7), 16)
   
-  // Create new colored image data
   const coloredData = ctx.createImageData(width, height)
   for (let i = 0; i < imageData.data.length; i += 4) {
-    // Check if pixel has alpha (is part of mask)
     if (imageData.data[i + 3] > 0) {
       coloredData.data[i] = r
       coloredData.data[i + 1] = g
       coloredData.data[i + 2] = b
-      coloredData.data[i + 3] = 180 // Semi-transparent
+      coloredData.data[i + 3] = 180
     }
   }
   
@@ -124,18 +85,6 @@ const getMaskBounds = (imageData: ImageData) => {
   }
 }
 
-// Recover mask data from colored mask URL (for restored sessions)
-const recoverMaskData = async (url: string, width: number, height: number): Promise<ImageData> => {
-  const img = await loadImage(url)
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(img, 0, 0, width, height)
-  return ctx.getImageData(0, 0, width, height)
-}
-
-// Create brightened mask overlay (original image with mask area brightness +100)
 const createBrightenedMaskUrl = async (maskResult: MaskResult, imageUrl: string): Promise<string | null> => {
   const image = await loadImage(imageUrl)
   const { width, height, imageData: maskData } = maskResult
@@ -145,19 +94,15 @@ const createBrightenedMaskUrl = async (maskResult: MaskResult, imageUrl: string)
   canvas.height = height
   const ctx = canvas.getContext('2d')!
 
-  // Draw original image
   ctx.drawImage(image, 0, 0, width, height)
   const imgData = ctx.getImageData(0, 0, width, height)
 
-  // Brighten only the masked area
   for (let i = 0; i < maskData.data.length; i += 4) {
     if (maskData.data[i + 3] > 0) {
-      // Brighten by adding 100 to each channel (clamped to 255)
       imgData.data[i] = Math.min(255, imgData.data[i] + 100)
       imgData.data[i + 1] = Math.min(255, imgData.data[i + 1] + 100)
       imgData.data[i + 2] = Math.min(255, imgData.data[i + 2] + 100)
     } else {
-      // Make non-masked area transparent
       imgData.data[i + 3] = 0
     }
   }
@@ -207,902 +152,760 @@ const createCroppedPreviewUrl = async (maskResult: MaskResult, imageUrl: string)
   return cropCanvas.toDataURL('image/png')
 }
 
-const PERSIST_ENABLED = process.env.NEXT_PUBLIC_PERSIST_SAMPLE === '1'
-const DEV_CACHE_URL = '/dev-cache.json'
-const DEV_CACHE_API = '/api/dev-cache'
-
-const buildCachePayload = (uploadedImage: string | null, subjects: Subject[]) => {
-  if (!uploadedImage) return null
-  return {
-    uploadedImage,
-    subjects: subjects.map(s => ({
-      id: s.id,
-      name: s.name,
-      color: s.color,
-      points: s.points,
-      coloredMaskUrl: s.coloredMaskUrl,
-      previewUrl: s.previewUrl,
-      brightenedMaskUrl: s.brightenedMaskUrl,
-      maskScore: s.maskScore,
-    })),
-  }
-}
+// --- Main Component ---
 
 export default function Home() {
-  const [currentStep, setCurrentStep] = useState(1)
-  const [appState, setAppState] = useState<AppState>({
-    uploadedImage: null,
-    selectedSubjects: [],
-    selectedBgm: null,
-    exportFormat: 'mp4',
-    glitchPreset: 'brightened',
-  })
-  
-  // Current subject being edited (adding points to refine mask)
-  const [editingSubjectId, setEditingSubjectId] = useState<number | null>(null)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
-  const [sequenceOrder, setSequenceOrder] = useState<number[]>([])
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false)
-  const [isRestoring, setIsRestoring] = useState(false)
-  const [undoStack, setUndoStack] = useState<Subject[][]>([])
-  const [redoStack, setRedoStack] = useState<Subject[][]>([])
-  const [fakeProgress, setFakeProgress] = useState(0)
-  const [hasMounted, setHasMounted] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
-
-  const sourceContainerRef = useRef<HTMLDivElement | null>(null)
+  // State
+  const [mode, setMode] = useState<AppMode>('editing') // Default to editing
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [imageAspect, setImageAspect] = useState<number | null>(null)
+  const [canvasWidth, setCanvasWidth] = useState<number | null>(null)
+  const [imageWidthPx, setImageWidthPx] = useState<number | null>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const [previewStyle, setPreviewStyle] = useState<'highlight' | 'solid'>('highlight')
+  const [bgm, setBgm] = useState<'none' | 'all-my-fellas.mp3' | 'whats-wrong-with-u.mp3'>('none')
+  const [isLooping, setIsLooping] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null)
+  const [previewMaskSrc, setPreviewMaskSrc] = useState<string | null>(null)
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  const [exportFormats, setExportFormats] = useState<Array<'mp4' | 'gif' | 'live' | 'cutout'>>(['mp4'])
+  const [cutoutModes, setCutoutModes] = useState<Array<'cropped' | 'fullsize'>>(['cropped'])
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportNote, setExportNote] = useState<string | null>(null)
+  const [exportProgress, setExportProgress] = useState<number>(0)
+  const ffmpegRef = useRef<FFmpeg | null>(null)
+  const prevModeRef = useRef<AppMode>('editing')
+  const previewTokenRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-
-  // Prevent hydration mismatch
-  useEffect(() => {
-    setHasMounted(true)
-  }, [])
-  const [imageMeta, setImageMeta] = useState<{ width: number; height: number } | null>(null)
-  const [displayBox, setDisplayBox] = useState<{ width: number; height: number; offsetX: number; offsetY: number } | null>(null)
-
-  // SAM hook - autoLoad=true means model starts loading on page load
+  const subjectsRef = useRef<Subject[]>([])
+  const loopRef = useRef(false)
+  const styleRef = useRef<'highlight' | 'solid'>('highlight')
+  const togglePreviewRef = useRef<() => void>(() => {})
+  
+  // Layout Transitions
+  const [isLayoutReady, setIsLayoutReady] = useState(false)
+  
+  // Fake Encoding Progress (0-1)
+  const [encodingProgress, setEncodingProgress] = useState<number | null>(null)
+  
+  // Staging Subject (Current one being edited)
+  const [stagingPoints, setStagingPoints] = useState<Point[]>([])
+  const [stagingMask, setStagingMask] = useState<MaskResult | null>(null)
+  const [stagingColoredMaskUrl, setStagingColoredMaskUrl] = useState<string | null>(null)
+  
+  // Confirmed Subjects
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  
+  // SAM
   const { 
     status: samStatus, 
     loadingProgress, 
     isEncoded, 
     encodeImage, 
-    decode
-  } = useSAM(true) // Start loading model immediately
+    decode,
+    initModel
+  } = useSAM(true)
 
-  // Fake progress for analysis (approx 12s)
-  useEffect(() => {
-    if (samStatus === 'loading_model' || samStatus === 'encoding') {
-      const interval = setInterval(() => {
-        setFakeProgress(prev => {
-          if (prev >= 99) return 99
-          return prev + 1
-        })
-      }, 120) // 12s to reach ~100%
-      return () => clearInterval(interval)
-    } else {
-      setFakeProgress(0)
-    }
-  }, [samStatus])
+  // Computed
+  const isModelReady = samStatus === 'model_ready' || samStatus === 'encoded'
+  const stagingColor = generateColor(subjects.length)
+  const canPlay = subjects.length > 0 && encodingProgress === null
 
   useEffect(() => {
-    if (!PERSIST_ENABLED || !hasMounted) return
-    const restore = async () => {
-      try {
-        setIsRestoring(true)
-        const res = await fetch(DEV_CACHE_URL, { cache: 'no-store' })
-        if (!res.ok) return
-        const parsed = await res.json()
-        if (!parsed?.uploadedImage || !Array.isArray(parsed?.subjects)) return
-        updateAppState({
-          uploadedImage: parsed.uploadedImage,
-          selectedSubjects: parsed.subjects,
-        })
-        setCurrentStep(2)
-      } catch {
-        // ignore missing or invalid cache
-      } finally {
-        setIsRestoring(false)
-      }
-    }
-    restore()
-  }, [hasMounted])
+    subjectsRef.current = subjects
+  }, [subjects])
 
   useEffect(() => {
-    // Sync sequence order with subjects (default: order of creation)
-    setSequenceOrder(appState.selectedSubjects.map(s => s.id))
-  }, [appState.selectedSubjects.length])
+    loopRef.current = isLooping
+  }, [isLooping])
 
-  // Compute displayed image box based on container + image size
   useEffect(() => {
-    if (currentStep !== 2) return
-    if (!sourceContainerRef.current || !imageMeta) return
+    styleRef.current = previewStyle
+  }, [previewStyle])
 
-    const updateDisplayBox = () => {
-      if (!sourceContainerRef.current) return
-      const rect = sourceContainerRef.current.getBoundingClientRect()
-      const scale = Math.min(rect.width / imageMeta.width, rect.height / imageMeta.height)
-      const width = imageMeta.width * scale
-      const height = imageMeta.height * scale
-      const offsetX = (rect.width - width) / 2
-      const offsetY = (rect.height - height) / 2
-      setDisplayBox({ width, height, offsetX, offsetY })
-    }
+  // --- Effects ---
 
-    updateDisplayBox()
-    const observer = new ResizeObserver(updateDisplayBox)
-    observer.observe(sourceContainerRef.current)
-
-    return () => observer.disconnect()
-  }, [imageMeta, currentStep])
-
-  // Encode image when uploaded and entering step 2
+  // Auto-encode image when uploaded
   useEffect(() => {
-    if (currentStep === 2 && appState.uploadedImage && !isEncoded && samStatus === 'model_ready') {
-      encodeImage(appState.uploadedImage)
+    // Only encode if model is ready and we have an image
+    // Note: initModel() is called manually in startUploadTransition
+    if (uploadedImage && samStatus === 'model_ready' && !isEncoded) {
+      encodeImage(uploadedImage)
     }
-  }, [currentStep, appState.uploadedImage, isEncoded, samStatus, encodeImage])
-
-  // Generate missing brightened masks when switching to 'brightened' preset
+  }, [uploadedImage, samStatus, isEncoded, encodeImage])
+  
+  // Fake Encoding Progress Logic
   useEffect(() => {
-    if (currentStep !== 3 || appState.glitchPreset !== 'brightened' || !appState.uploadedImage) return
-
-    const subjectsMissingUrl = appState.selectedSubjects.filter(s => !s.brightenedMaskUrl)
-    
-    if (subjectsMissingUrl.length === 0) return
-
-    const generateMissingUrls = async () => {
-      const newSubjects = [...appState.selectedSubjects]
-      let hasUpdates = false
-      
-      try {
-        // Load image once to get dimensions
-        const image = await loadImage(appState.uploadedImage!)
-        const width = image.naturalWidth
-        const height = image.naturalHeight
-
-        for (let i = 0; i < newSubjects.length; i++) {
-          const s = newSubjects[i]
-          if (!s.brightenedMaskUrl) {
-            let maskResult = s.maskResult
-            
-            // If maskResult is missing (restored from cache), try to recover from coloredMaskUrl
-            if (!maskResult && s.coloredMaskUrl) {
-               const recoveredData = await recoverMaskData(s.coloredMaskUrl, width, height)
-               maskResult = {
-                 imageData: recoveredData,
-                 width,
-                 height,
-                 score: s.maskScore || 0,
-                 dataUrl: ''
-               }
-            }
-
-            if (maskResult) {
-              const url = await createBrightenedMaskUrl(maskResult, appState.uploadedImage!)
-              if (url) {
-                newSubjects[i] = { ...s, brightenedMaskUrl: url }
-                hasUpdates = true
-              }
-            }
-          }
-        }
-
-        if (hasUpdates) {
-          updateAppState({ selectedSubjects: newSubjects })
-        }
-      } catch (err) {
-        console.error('Error generating brightened masks:', err)
-      }
+    if (samStatus === 'loading_model') {
+       // Phase 1 & 2: Loading model (0 -> 28%)
+       // Use real loadingProgress if available, otherwise fake it
+       if (loadingProgress?.progress) {
+          // Map real progress (0-1) to UI progress (0-0.28)
+          setEncodingProgress(loadingProgress.progress * 0.28)
+       } else {
+          setEncodingProgress(0.1) // Fallback
+       }
+    } else if (samStatus === 'encoding') {
+       // Phase 3-5: Encoding (28% -> 100%)
+       // Start fake progress from 0.28
+       setEncodingProgress(prev => Math.max(prev || 0.28, 0.28))
+       
+       const interval = setInterval(() => {
+         setEncodingProgress(prev => {
+           const current = prev || 0.28
+           if (current >= 0.99) return 0.99
+           // Slow down as it gets closer to 100
+           const step = current > 0.8 ? 0.002 : 0.008
+           return current + step
+         })
+       }, 50)
+       return () => clearInterval(interval)
+    } else if (samStatus === 'encoded' || samStatus === 'model_ready') {
+       // Done
+       setEncodingProgress(null)
     }
+  }, [samStatus, loadingProgress])
 
-    generateMissingUrls()
-  }, [currentStep, appState.glitchPreset, appState.selectedSubjects, appState.uploadedImage])
-
-  const handleStepClick = (stepId: number) => {
-    if (stepId <= currentStep || (stepId === 2 && appState.uploadedImage)) {
-      setCurrentStep(stepId)
-    }
-  }
-
-  const updateAppState = (updates: Partial<AppState>) => {
-    setAppState(prev => ({ ...prev, ...updates }))
-  }
-
-  // Handle click on source image
-  const handleSourceClick = useCallback(async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (currentStep !== 2 || !appState.uploadedImage || !isEncoded) return
-    if (samStatus === 'decoding' || samStatus === 'encoding') return
-
-    if (!displayBox || !sourceContainerRef.current) return
-    const rect = sourceContainerRef.current.getBoundingClientRect()
-    const localX = e.clientX - rect.left - displayBox.offsetX
-    const localY = e.clientY - rect.top - displayBox.offsetY
-    if (localX < 0 || localY < 0 || localX > displayBox.width || localY > displayBox.height) {
-      return
-    }
-    const x = (localX / displayBox.width) * 100
-    const y = (localY / displayBox.height) * 100
-    const label: 0 | 1 = e.button === 2 ? 0 : 1 // Right click = negative
-
-    if (editingSubjectId !== null) {
-      // Add point to existing subject being edited
-      const subject = appState.selectedSubjects.find(s => s.id === editingSubjectId)
-      if (!subject) return
-
-      const newPoints: Point[] = [...subject.points, { x, y, label }]
-      
-      try {
-        // Save current state for undo
-        setUndoStack(prev => [...prev, appState.selectedSubjects])
-        setRedoStack([]) // Clear redo stack on new action
-
-        const maskResult = await decode(newPoints)
-        const coloredMaskUrl = createColoredMaskUrl(maskResult, subject.color)
-        const [previewUrl, brightenedMaskUrl] = await Promise.all([
-          appState.uploadedImage ? createCroppedPreviewUrl(maskResult, appState.uploadedImage) : Promise.resolve(undefined),
-          appState.uploadedImage ? createBrightenedMaskUrl(maskResult, appState.uploadedImage) : Promise.resolve(undefined),
-        ])
-        const newSubjects = appState.selectedSubjects.map(s => {
-          if (s.id === editingSubjectId) {
-            return { 
-              ...s, 
-              points: newPoints, 
-              maskResult, 
-              coloredMaskUrl, 
-              previewUrl: previewUrl ?? s.previewUrl,
-              brightenedMaskUrl: brightenedMaskUrl ?? s.brightenedMaskUrl,
-              maskScore: maskResult.score,
-            }
-          }
-          return s
-        })
-        updateAppState({ selectedSubjects: newSubjects })
-        if (PERSIST_ENABLED) {
-          const payload = buildCachePayload(appState.uploadedImage, newSubjects)
-          if (payload) {
-            fetch(DEV_CACHE_API, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-          }
-        }
-      } catch (err) {
-        console.error('Decode error:', err)
-      }
-    } else {
-      // Create new subject with first point
-      const newPoint: Point = { x, y, label: 1 }
-      
-      try {
-        // Save current state for undo
-        setUndoStack(prev => [...prev, appState.selectedSubjects])
-        setRedoStack([]) // Clear redo stack on new action
-
-        const maskResult = await decode([newPoint])
-        const color = generateColor(appState.selectedSubjects.length)
-        const coloredMaskUrl = createColoredMaskUrl(maskResult, color)
-        const [previewUrl, brightenedMaskUrl] = await Promise.all([
-          appState.uploadedImage ? createCroppedPreviewUrl(maskResult, appState.uploadedImage) : Promise.resolve(undefined),
-          appState.uploadedImage ? createBrightenedMaskUrl(maskResult, appState.uploadedImage) : Promise.resolve(undefined),
-        ])
-        const newSubject: Subject = {
-          id: Date.now(),
-          name: `SUB_${String(appState.selectedSubjects.length + 1).padStart(2, '0')}`,
-          color,
-          points: [newPoint],
-          maskResult,
-          coloredMaskUrl,
-          previewUrl: previewUrl ?? undefined,
-          brightenedMaskUrl: brightenedMaskUrl ?? undefined,
-          maskScore: maskResult.score,
-        }
-        const newSubjects = [...appState.selectedSubjects, newSubject]
-        updateAppState({ selectedSubjects: newSubjects })
-        if (PERSIST_ENABLED) {
-          const payload = buildCachePayload(appState.uploadedImage, newSubjects)
-          if (payload) {
-            fetch(DEV_CACHE_API, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-          }
-        }
-        setEditingSubjectId(newSubject.id) // Enter editing mode for this subject
-      } catch (err) {
-        console.error('Decode error:', err)
-      }
-    }
-  }, [currentStep, appState, isEncoded, editingSubjectId, samStatus, decode, displayBox])
-
-  // Finish editing current subject
-  const handleFinishEditing = useCallback(() => {
-    setEditingSubjectId(null)
+  // Mock initial load (optional, for dev)
+  useEffect(() => {
+    // If we want to load a sample image by default
+    // const sample = '/examples/input-sample.jpg'
+    // loadImage(sample).then(() => setUploadedImage(sample))
   }, [])
 
-  // Clear points and restart current subject
-  const handleClearPoints = () => {
-    if (editingSubjectId !== null) {
-      // Remove the subject being edited
-      const newSubjects = appState.selectedSubjects.filter(s => s.id !== editingSubjectId)
-      updateAppState({ selectedSubjects: newSubjects })
-      setEditingSubjectId(null)
-    }
-  }
-
-  // Undo last point (Command+Z)
-  const handleUndo = useCallback(() => {
-    if (undoStack.length > 0) {
-      const previousState = undoStack[undoStack.length - 1]
-      const currentState = appState.selectedSubjects
-      setRedoStack(prev => [...prev, currentState])
-      setUndoStack(prev => prev.slice(0, -1))
-      updateAppState({ selectedSubjects: previousState })
-    }
-  }, [undoStack, appState.selectedSubjects])
-
-  // Redo last point (Command+Shift+Z)
-  const handleRedo = useCallback(() => {
-    if (redoStack.length > 0) {
-      const nextState = redoStack[redoStack.length - 1]
-      const currentState = appState.selectedSubjects
-      setUndoStack(prev => [...prev, currentState])
-      setRedoStack(prev => prev.slice(0, -1))
-      updateAppState({ selectedSubjects: nextState })
-    }
-  }, [redoStack, appState.selectedSubjects])
-
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (currentStep !== 2) return
-
-      // Enter = DONE
-      if (e.key === 'Enter' && editingSubjectId !== null) {
-        e.preventDefault()
-        handleFinishEditing()
+      if (e.code !== 'Space') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
+        return
       }
-
-      // Command+Shift+Z = Redo
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        handleRedo()
-      }
-      // Command+Z = Undo
-      else if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-        e.preventDefault()
-        handleUndo()
-      }
+      e.preventDefault()
+      togglePreviewRef.current()
     }
-
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentStep, editingSubjectId, handleFinishEditing, handleUndo, handleRedo])
+  }, [])
 
-  // Upload handler
-  const handleUpload = (file?: File) => {
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string
-        setImageMeta(null)
-        setDisplayBox(null)
-        updateAppState({ uploadedImage: dataUrl })
-        setCurrentStep(2)
-        if (samStatus === 'model_ready') {
-          encodeImage(dataUrl)
-        }
-        if (PERSIST_ENABLED) {
-          const payload = buildCachePayload(dataUrl, appState.selectedSubjects)
-          if (payload) {
-            fetch(DEV_CACHE_API, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-          }
+  useEffect(() => {
+    if (!imageAspect) {
+      setCanvasWidth(null)
+      setImageWidthPx(null)
+      return
+    }
+    const el = workspaceRef.current
+    if (!el) return
+
+    const update = () => {
+      const height = el.clientHeight
+      const width = el.clientWidth
+      const computedImageWidth = Math.round(height * imageAspect)
+      const maxLeftWidth = Math.round(width * 0.45)
+      const nextCanvasWidth = Math.min(computedImageWidth, maxLeftWidth)
+      setImageWidthPx(computedImageWidth)
+      setCanvasWidth(nextCanvasWidth)
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+    }
+  }, [imageAspect])
+
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+  const dataUrlToUint8 = (dataUrl: string) => {
+    const base64 = dataUrl.split(',')[1] || ''
+    const binary = atob(base64)
+    const len = binary.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  }
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const createFullsizeCutoutUrl = async (maskResult: MaskResult, imageUrl: string): Promise<string | null> => {
+    const image = await loadImage(imageUrl)
+    const { width, height, imageData: maskData } = maskResult
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+
+    ctx.drawImage(image, 0, 0, width, height)
+    const imgData = ctx.getImageData(0, 0, width, height)
+
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      if (maskData.data[i + 3] === 0) {
+        imgData.data[i + 3] = 0
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0)
+    return canvas.toDataURL('image/png')
+  }
+
+  const stopPreview = (restoreMode: boolean = true) => {
+    previewTokenRef.current += 1
+    setIsPlaying(false)
+    setCurrentPlayingIndex(null)
+    setPreviewMaskSrc(null)
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    if (restoreMode) {
+      setMode(prevModeRef.current)
+    }
+  }
+
+  const runPreview = async (token: number) => {
+    const getMaskFor = (subject: Subject): string | null => {
+      if (styleRef.current === 'highlight') {
+        return subject.brightenedMaskUrl || subject.coloredMaskUrl || null
+      }
+      return subject.coloredMaskUrl || null
+    }
+
+    while (token === previewTokenRef.current) {
+      const list = subjectsRef.current
+      if (list.length === 0) break
+      for (let i = 0; i < list.length; i++) {
+        if (token !== previewTokenRef.current) return
+        const subject = list[i]
+        setCurrentPlayingIndex(i)
+        setPreviewMaskSrc(getMaskFor(subject))
+        const duration = Math.max(0.05, subject.duration ?? 0.1)
+        await sleep(duration * 1000)
+      }
+      if (!loopRef.current) break
+    }
+    if (token === previewTokenRef.current) {
+      stopPreview(true)
+    }
+  }
+
+  const startPreview = () => {
+    if (!canPlay) return
+    prevModeRef.current = mode
+    setMode('previewing')
+    setIsPlaying(true)
+    const token = (previewTokenRef.current += 1)
+
+    if (bgm !== 'none') {
+      if (!audioRef.current) {
+        audioRef.current = new Audio()
+      }
+      const audio = audioRef.current
+      audio.src = `/bgm/${bgm}`
+      audio.loop = isLooping
+      audio.currentTime = 0
+      audio.play().catch(() => {
+        // Ignore autoplay restrictions
+      })
+    }
+
+    runPreview(token)
+  }
+
+  const togglePreview = () => {
+    if (isPlaying) {
+      stopPreview(true)
+      return
+    }
+    startPreview()
+  }
+
+  useEffect(() => {
+    togglePreviewRef.current = togglePreview
+  }, [togglePreview])
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.loop = isLooping
+    }
+  }, [isLooping])
+
+  useEffect(() => {
+    return () => {
+      stopPreview(false)
+    }
+  }, [])
+
+  const buildExportFrames = async () => {
+    if (!uploadedImage) return null
+    const validSubjects = subjects.filter(s => s.maskResult && (s.coloredMaskUrl || s.brightenedMaskUrl))
+    if (validSubjects.length === 0) return null
+    const baseImage = await loadImage(uploadedImage)
+    const width = validSubjects[0].maskResult!.width
+    const height = validSubjects[0].maskResult!.height
+
+    const overlays = await Promise.all(
+      validSubjects.map(async (s) => {
+        const url = previewStyle === 'highlight'
+          ? (s.brightenedMaskUrl || s.coloredMaskUrl)
+          : s.coloredMaskUrl
+        if (!url) return null
+        const img = await loadImage(url)
+        return { id: s.id, img }
+      })
+    )
+
+    return { validSubjects, baseImage, width, height, overlays }
+  }
+
+  const renderFrames = async () => {
+    const data = await buildExportFrames()
+    if (!data) {
+      setExportNote('NO SUBJECTS TO EXPORT.')
+      return null
+    }
+    const { validSubjects, baseImage, width, height, overlays } = data
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+
+    const fps = 30
+    const frames: { data: Uint8ClampedArray; duration: number }[] = []
+    const durations = validSubjects.map(s => Math.max(0.05, s.duration ?? 0.1))
+    const repeats = durations.map(d => Math.max(1, Math.round(d * fps)))
+
+    const draw = (index: number) => {
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(baseImage, 0, 0, width, height)
+      const overlay = overlays[index]
+      if (overlay?.img) {
+        ctx.drawImage(overlay.img, 0, 0, width, height)
+      }
+    }
+
+    for (let i = 0; i < validSubjects.length; i++) {
+      draw(i)
+      const imageData = ctx.getImageData(0, 0, width, height)
+      for (let r = 0; r < repeats[i]; r++) {
+        frames.push({ data: imageData.data.slice(), duration: 1000 / fps })
+      }
+      setExportProgress(Math.round(((i + 1) / validSubjects.length) * 40))
+    }
+
+    return { frames, width, height, fps }
+  }
+
+  const ensureFfmpeg = async () => {
+    if (!ffmpegRef.current) {
+      const ffmpeg = new FFmpeg()
+      ffmpeg.on('progress', ({ progress }) => {
+        const pct = Math.round(40 + progress * 50)
+        setExportProgress(pct)
+      })
+      ffmpegRef.current = ffmpeg
+    }
+    const ffmpeg = ffmpegRef.current
+    if (!ffmpeg.loaded) {
+      await ffmpeg.load()
+    }
+    return ffmpeg
+  }
+
+  const exportMp4WithFfmpeg = async () => {
+    const rendered = await renderFrames()
+    if (!rendered) return
+    const { frames, width, height, fps } = rendered
+    const ffmpeg = await ensureFfmpeg()
+    const frameCount = frames.length
+    const written: string[] = []
+
+    for (let i = 0; i < frameCount; i++) {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')!
+      const frameData = new Uint8ClampedArray(frames[i].data)
+      const imageData = new ImageData(frameData, width, height)
+      ctx.putImageData(imageData, 0, 0)
+      const blob = await new Promise<Blob>((resolve) => canvas.toBlob(b => resolve(b!), 'image/png'))
+      const name = `frame_${String(i).padStart(4, '0')}.png`
+      await ffmpeg.writeFile(name, await fetchFile(blob))
+      written.push(name)
+      if (i % 10 === 0) {
+        setExportProgress(40 + Math.round((i / frameCount) * 30))
+      }
+    }
+
+    await ffmpeg.exec([
+      '-framerate', String(fps),
+      '-i', 'frame_%04d.png',
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      'out.mp4'
+    ])
+
+    const data = await ffmpeg.readFile('out.mp4')
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as unknown as ArrayBuffer)
+    const copy = Uint8Array.from(bytes)
+    downloadBlob(new Blob([copy], { type: 'video/mp4' }), 'imageglitch-export.mp4')
+
+    for (const name of written) {
+      await ffmpeg.deleteFile(name)
+    }
+    await ffmpeg.deleteFile('out.mp4')
+  }
+
+  const exportGif = async () => {
+    const rendered = await renderFrames()
+    if (!rendered) return
+    const { frames, width, height } = rendered
+    const encoder = GIFEncoder()
+    const sample = frames[Math.max(0, frames.length - 1)]?.data
+    const palette = quantize(sample, 256)
+
+    const total = frames.length
+    frames.forEach((frame, idx) => {
+      const indexed = applyPalette(frame.data, palette)
+      encoder.writeFrame(indexed, width, height, { palette, delay: frame.duration })
+      if (idx % 10 === 0) {
+        setExportProgress(40 + Math.round((idx / total) * 50))
+      }
+    })
+
+    encoder.finish()
+    const gifData = encoder.bytes()
+    downloadBlob(new Blob([gifData], { type: 'image/gif' }), 'imageglitch-export.gif')
+  }
+
+  const exportLivePhoto = async () => {
+    setExportNote('LIVE PHOTO EXPORT IS LIMITED IN BROWSER. EXPORTING MP4 AND STILL.')
+    await exportMp4WithFfmpeg()
+    const data = await buildExportFrames()
+    if (!data) return
+    const { baseImage, width, height } = data
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(baseImage, 0, 0, width, height)
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.92))
+    downloadBlob(blob, 'imageglitch-live-photo.jpg')
+  }
+
+  const exportCutoutZip = async () => {
+    if (!uploadedImage) return
+    const files: Record<string, Uint8Array> = {}
+    const modes = cutoutModes.length > 0 ? cutoutModes : ['cropped']
+
+    const jobs = subjects.map(async (subject, index) => {
+      if (!subject.maskResult) return
+      const id = String(index + 1).padStart(2, '0')
+      const baseName = `${subject.name || `SUB_${id}`}.png`
+      if (modes.includes('cropped')) {
+        const url = subject.previewUrl || await createCroppedPreviewUrl(subject.maskResult, uploadedImage)
+        if (url) {
+          files[`A_cropped/${baseName}`] = dataUrlToUint8(url)
         }
       }
-      reader.readAsDataURL(file)
-    } else {
-      setImageMeta(null)
-      setDisplayBox(null)
-      updateAppState({ uploadedImage: MOCK_DATA.image })
-      setCurrentStep(2)
-      if (samStatus === 'model_ready') {
-        encodeImage(MOCK_DATA.image)
-      }
-      if (PERSIST_ENABLED) {
-        const payload = buildCachePayload(MOCK_DATA.image, appState.selectedSubjects)
-        if (payload) {
-          fetch(DEV_CACHE_API, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          })
+      if (modes.includes('fullsize')) {
+        const url = await createFullsizeCutoutUrl(subject.maskResult, uploadedImage)
+        if (url) {
+          files[`B_fullsize/${baseName}`] = dataUrlToUint8(url)
         }
       }
-    }
+    })
+
+    await Promise.all(jobs)
+    const zipped = zipSync(files, { level: 6 })
+    const zipBlob = new Blob([zipped as unknown as BlobPart], { type: 'application/zip' })
+    downloadBlob(zipBlob, 'imageglitch-cutouts.zip')
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      handleUpload(file)
-    }
-  }
-
-  // Drag and drop for subject reordering
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
-  }
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault()
-    if (draggedIndex === null || draggedIndex === index) return
-    setDragOverIndex(index)
-    const newSubjects = [...appState.selectedSubjects]
-    const [dragged] = newSubjects.splice(draggedIndex, 1)
-    newSubjects.splice(index, 0, dragged)
-    updateAppState({ selectedSubjects: newSubjects })
-    setDraggedIndex(index)
-    setSequenceOrder(newSubjects.map(s => s.id))
-  }
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null)
-    setDragOverIndex(null)
-  }
-
-  const removeSubject = (id: number) => {
-    const newSubjects = appState.selectedSubjects.filter(s => s.id !== id)
-    updateAppState({ selectedSubjects: newSubjects })
-    if (editingSubjectId === id) {
-      setEditingSubjectId(null)
-    }
-  }
-
-  // Select a subject to edit
-  const selectSubjectToEdit = (id: number) => {
-    if (editingSubjectId === id) {
-      // Already editing, finish
-      setEditingSubjectId(null)
-    } else {
-      setEditingSubjectId(id)
-    }
-  }
-
-  const rawProgress = loadingProgress?.progress
-  const progressPercent = typeof rawProgress === 'number'
-    ? Math.round(rawProgress > 1 ? rawProgress : rawProgress * 100)
-    : null
-  const modelProgress = typeof rawProgress === 'number'
-    ? rawProgress > 1 ? rawProgress / 100 : rawProgress
-    : 0
-
-  // Get status text
-  const getStatusText = () => {
-    switch (samStatus) {
-      case 'loading_model':
-        if (progressPercent !== null) {
-          return `LOADING MODEL ${progressPercent}%`
+  const handleExport = async () => {
+    if (exportBusy) return
+    setExportNote(null)
+    setExportProgress(0)
+    setExportBusy(true)
+    try {
+      if (exportFormats.length === 0) {
+        setExportNote('SELECT AT LEAST ONE FORMAT.')
+        return
+      }
+      for (const format of exportFormats) {
+        if (format === 'cutout') {
+          await exportCutoutZip()
+        } else if (format === 'gif') {
+          await exportGif()
+        } else if (format === 'mp4') {
+          await exportMp4WithFfmpeg()
+        } else if (format === 'live') {
+          await exportLivePhoto()
         }
-        return 'LOADING MODEL...'
-      case 'encoding':
-        return `ANALYZING IMAGE... ${fakeProgress}%`
-      case 'decoding':
-        return 'GENERATING MASK...'
-      default:
-        return null
+      }
+    } catch (err) {
+      console.error(err)
+      setExportNote('EXPORT FAILED. PLEASE TRY AGAIN.')
+    } finally {
+      setExportBusy(false)
+      setExportProgress(0)
     }
   }
 
-  const statusText = getStatusText()
-  const isProcessing = samStatus === 'loading_model' || samStatus === 'encoding' || samStatus === 'decoding'
-  const editingSubject = appState.selectedSubjects.find(s => s.id === editingSubjectId)
+  // --- Handlers ---
 
-  // Render content based on current step
-  const renderContent = () => {
-    switch (currentStep) {
-      case 1: // UPLOAD
-        return (
-          <div className={styles.uploadStep}>
-            <div 
-              className={`${styles.uploadZone} ${isDragging ? styles.dragActive : ''}`}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setIsDragging(true)
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault()
-                setIsDragging(true)
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault()
-                setIsDragging(false)
-              }}
-              onDrop={(e) => { 
-                e.preventDefault()
-                setIsDragging(false)
-                const file = e.dataTransfer.files[0]
-                if (file) handleUpload(file)
-              }}
-            >
-              <input 
-                ref={fileInputRef}
-                type="file" 
-                accept="image/*" 
-                onChange={handleFileSelect}
-                className={styles.fileInput}
-              />
-              <div className={styles.uploadContent}>
-                <div className={styles.uploadIcon}>+</div>
-                <p className={styles.uploadText}>DRAG & DROP IMAGE</p>
-                <p className={styles.uploadHint}>OR CLICK TO BROWSE</p>
-                <div className={styles.uploadFormats}>JPG / PNG / WEBP</div>
-              </div>
-            </div>
-            
-            <button 
-              className={styles.sampleButton}
-              onClick={() => handleUpload()}
-            >
-              USE SAMPLE IMAGE
-            </button>
-            {PERSIST_ENABLED && (
-              <button
-                className={styles.clearCacheButton}
-                onClick={() => {
-                  fetch(DEV_CACHE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadedImage: null, subjects: [] }) })
-                  updateAppState({ uploadedImage: null, selectedSubjects: [] })
-                  setCurrentStep(1)
-                }}
-              >
-                CLEAR CACHED SAMPLE
-              </button>
-            )}
-          </div>
-        )
+  const startUploadTransition = (dataUrl: string) => {
+    setUploadedImage(dataUrl)
+    // 1. Reset state
+    setSubjects([])
+    setStagingPoints([])
+    setStagingMask(null)
+    setStagingColoredMaskUrl(null)
+    setMode('editing')
+    
+    // 2. Trigger layout transition after short delay
+    setTimeout(() => {
+      setIsLayoutReady(true)
+      // 3. Start model init only after layout is ready (smooth transition)
+      initModel()
+    }, 600) // Wait for 0.5s transition + buffer
+  }
 
-      case 2: // SELECT (SAM workflow) - Two columns only
-        return (
-          <div className={styles.selectStep}>
-            {/* Left: Source Image with Mask Overlay */}
-            <div className={styles.sourcePanel}>
-              <div className={styles.panelHeader}>
-                <div className={styles.headerTitleArea}>
-                  <span>SOURCE</span>
-                  <span className={styles.headerHint}>
-                    {!isEncoded 
-                      ? (samStatus === 'loading_model' ? 'LOADING MODEL...' : 'ANALYZING IMAGE...')
-                      : editingSubjectId !== null 
-                        ? 'LEFT + / RIGHT - / CLICK DONE WHEN FINISHED' 
-                        : 'CLICK TO SELECT A SUBJECT'}
-                  </span>
-                </div>
-                <div className={styles.headerActions}>
-                  {editingSubjectId !== null && (
-                    <>
-                      <button 
-                        className={styles.clearButton}
-                        onClick={handleClearPoints}
-                      >
-                        CLEAR
-                      </button>
-                      <button 
-                        className={styles.finishButton}
-                        onClick={handleFinishEditing}
-                      >
-                        DONE
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div 
-                className={`${styles.sourceImage} ${isProcessing ? styles.processing : ''}`}
-                onClick={handleSourceClick}
-                onContextMenu={(e) => e.preventDefault()}
-                ref={sourceContainerRef}
-              >
-                <div
-                  className={styles.imageFrame}
-                  style={
-                    displayBox
-                      ? {
-                          width: `${displayBox.width}px`,
-                          height: `${displayBox.height}px`,
-                          left: `${displayBox.offsetX}px`,
-                          top: `${displayBox.offsetY}px`,
-                        }
-                      : undefined
-                  }
-                >
-                  <img
-                    src={appState.uploadedImage || ''}
-                    alt="Source"
-                    className={styles.sourceImg}
-                    onLoad={(e) => {
-                      const target = e.currentTarget
-                      setImageMeta({ width: target.naturalWidth, height: target.naturalHeight })
-                    }}
-                  />
-                  
-                  {/* Show mask of current editing subject */}
-                  {editingSubject?.coloredMaskUrl && (
-                    <img 
-                      src={editingSubject.coloredMaskUrl}
-                      alt="Mask"
-                      className={styles.maskOverlayImg}
-                    />
-                  )}
+  const handleUpload = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string
+      try {
+        const img = await loadImage(dataUrl)
+        const aspect = img.width / img.height
+        setImageAspect(aspect)
+      } catch {
+        setImageAspect(null)
+      }
+      startUploadTransition(dataUrl)
+    }
+    reader.readAsDataURL(file)
+  }
+  
+  const handleUseSample = async () => {
+    const sample = '/examples/input-sample.jpg'
+    try {
+      const img = await loadImage(sample) // Preload
+      const aspect = img.width / img.height
+      setImageAspect(aspect)
+    } catch {
+      setImageAspect(null)
+    }
+    startUploadTransition(sample)
+  }
 
-                  {/* Render points for current editing subject */}
-                  {editingSubject?.points.map((point, pIdx) => (
-                    <div
-                      key={`editing-${pIdx}`}
-                      className={`${styles.marker} ${point.label === 0 ? styles.negativeMarker : ''}`}
-                      style={{
-                        left: `${point.x}%`,
-                        top: `${point.y}%`,
-                        borderColor: editingSubject.color,
-                        background: point.label === 1 ? editingSubject.color : 'transparent',
-                      }}
-                    />
-                  ))}
-                </div>
+  const handlePointAdd = async (x: number, y: number, label: 0 | 1) => {
+    if (mode !== 'editing' || !uploadedImage || !isEncoded) return
 
-                {/* Loading overlay */}
-                {isProcessing && (
-                  <div className={styles.loadingOverlay}>
-                    <div className={styles.loadingContent}>
-                      <div className={styles.statusSpinner} />
-                      <span>{statusText}</span>
-                      <div className={styles.loadingBar}>
-                        <div className={styles.loadingBarFill} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+    const newPoints = [...stagingPoints, { x, y, label }]
+    setStagingPoints(newPoints)
 
-            {/* Right: Subject List */}
-            <div className={styles.subjectsPanel}>
-              <div className={styles.panelHeader}>
-                <span>SUBJECTS</span>
-                <span className={styles.countBadge}>{appState.selectedSubjects.length}</span>
-              </div>
-              <div className={styles.subjectList}>
-                {appState.selectedSubjects.map((subject, index) => (
-                  <div
-                    key={subject.id}
-                    className={`${styles.subjectCard} ${editingSubjectId === subject.id ? styles.activeCard : ''} ${draggedIndex === index ? styles.draggingCard : ''} ${dragOverIndex === index ? styles.dragOverCard : ''}`}
-                    draggable={editingSubjectId === null}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => selectSubjectToEdit(subject.id)}
-                    style={{ borderColor: editingSubjectId === subject.id ? subject.color : 'transparent' }}
-                  >
-                    <div className={styles.subjectPreview}>
-                      {subject.previewUrl ? (
-                        <img 
-                          src={subject.previewUrl}
-                          alt={subject.name}
-                          className={styles.maskThumbnail}
-                        />
-                      ) : subject.coloredMaskUrl ? (
-                        <img 
-                          src={subject.coloredMaskUrl}
-                          alt={subject.name}
-                          className={styles.maskThumbnail}
-                        />
-                      ) : (
-                        <span className={styles.maskPlaceholder}>MASK</span>
-                      )}
-                    </div>
-                    <div className={styles.subjectInfo}>
-                      <div className={styles.subjectColor} style={{ background: subject.color }} />
-                      <span className={styles.subjectName}>{subject.name}</span>
-                      <span className={styles.pointCount}>{subject.points.length}pt</span>
-                    </div>
-                    <button 
-                      className={styles.removeButton}
-                      onClick={(e) => { e.stopPropagation(); removeSubject(subject.id) }}
-                    >
-                      x
-                    </button>
-                    {subject.maskResult && (
-                      <div className={styles.scoreTag}>
-                        {(subject.maskResult.score * 100).toFixed(0)}%
-                      </div>
-                    )}
-                  </div>
-                ))}
-                
-                {appState.selectedSubjects.length === 0 && (
-                  <div className={styles.emptyState}>
-                    <p>NO SUBJECTS YET</p>
-                    <p className={styles.emptyHint}>CLICK ON THE IMAGE TO SELECT</p>
-                  </div>
-                )}
-              </div>
-              
-              {appState.selectedSubjects.length > 1 && editingSubjectId === null && (
-                <p className={styles.dragHint}>DRAG TO REORDER SEQUENCE</p>
-              )}
-              
-              {appState.selectedSubjects.length > 0 && editingSubjectId === null && (
-                <button 
-                  className={styles.continueButton}
-                  onClick={() => setCurrentStep(3)}
-                >
-                  CONTINUE TO EXPORT
-                </button>
-              )}
-            </div>
-          </div>
-        )
-
-      case 3: // EXPORT (with audio)
-        const totalDuration = appState.selectedSubjects.length * 0.1 // Each subject shows for 0.1s
-        const cycleDuration = totalDuration > 0 ? totalDuration : 1
-
-        return (
-            <div className={styles.exportStep}>
-            {/* Left: Preview (same layout as step 2) */}
-            <div className={styles.sourcePanel}>
-              <div className={styles.panelHeader}>
-                <span>FINAL PREVIEW</span>
-              </div>
-              <div className={styles.sourceImage}>
-                <div className={styles.imageFrame}>
-                    <img 
-                    src={appState.uploadedImage || ''} 
-                    alt="Final Preview" 
-                    className={styles.sourceImg} 
-                  />
-
-                    {/* Brightened mask overlays - each subject flashes in sequence */}
-                    {appState.selectedSubjects.map((s, i) => (
-                      <img
-                        key={s.id}
-                        src={appState.glitchPreset === 'solid' ? (s.coloredMaskUrl || '') : (s.brightenedMaskUrl || s.coloredMaskUrl)}
-                        alt={s.name}
-                        className={styles.flashMask}
-                        style={{ 
-                          animationDelay: `${i * 0.1}s`,
-                          animationDuration: `${cycleDuration}s`,
-                          zIndex: 10,
-                        }}
-                      />
-                    ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Settings */}
-            <div className={styles.exportSettings}>
-              <div className={styles.settingSection}>
-                <div className={styles.panelHeader}>
-                  <span>GLITCH PRESET</span>
-                </div>
-                <div className={styles.formatGrid}>
-                  <button
-                    className={`${styles.formatOption} ${appState.glitchPreset === 'solid' ? styles.formatSelected : ''}`}
-                    onClick={() => updateAppState({ glitchPreset: 'solid' })}
-                  >
-                    SOLID COLOR
-                  </button>
-                  <button
-                    className={`${styles.formatOption} ${appState.glitchPreset === 'brightened' ? styles.formatSelected : ''}`}
-                    onClick={() => updateAppState({ glitchPreset: 'brightened' })}
-                  >
-                    BRIGHTENED
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.settingSection}>
-                <div className={styles.panelHeader}>
-                  <span>AUDIO TRACK</span>
-                </div>
-                <div className={styles.audioList}>
-                  {MOCK_DATA.bgmList.map(bgm => (
-                    <button
-                      key={bgm.id}
-                      className={`${styles.audioOption} ${appState.selectedBgm?.id === bgm.id ? styles.audioSelected : ''}`}
-                      onClick={() => {
-                        updateAppState({ selectedBgm: bgm })
-                        // Play audio preview
-                        if (bgm.file) {
-                          if (audioRef.current) {
-                            audioRef.current.pause()
-                          }
-                          const audio = new Audio(bgm.file)
-                          audio.loop = true
-                          audio.play()
-                          audioRef.current = audio
-                        } else {
-                          if (audioRef.current) {
-                            audioRef.current.pause()
-                            audioRef.current = null
-                          }
-                        }
-                      }}
-                    >
-                      <span>{bgm.name}</span>
-                      <span className={styles.audioDuration}>{bgm.duration}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={styles.settingSection}>
-                <div className={styles.panelHeader}>
-                  <span>FORMAT</span>
-                </div>
-                <div className={styles.formatGrid}>
-                  {(['mp4', 'gif', 'livephoto'] as const).map(format => (
-                    <button
-                      key={format}
-                      className={`${styles.formatOption} ${appState.exportFormat === format ? styles.formatSelected : ''}`}
-                      onClick={() => updateAppState({ exportFormat: format })}
-                    >
-                      {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button className={styles.downloadButton}>
-                DOWNLOAD {appState.exportFormat.toUpperCase()}
-              </button>
-              
-              <button 
-                className={styles.backButton}
-                onClick={() => {
-                  // Stop audio when going back
-                  if (audioRef.current) {
-                    audioRef.current.pause()
-                    audioRef.current = null
-                  }
-                  setCurrentStep(2)
-                }}
-              >
-                BACK TO EDIT
-              </button>
-            </div>
-          </div>
-        )
-
-      default:
-        return null
+    try {
+      const maskResult = await decode(newPoints)
+      setStagingMask(maskResult)
+      const coloredUrl = createColoredMaskUrl(maskResult, stagingColor)
+      setStagingColoredMaskUrl(coloredUrl)
+    } catch (err) {
+      console.error('Decode error:', err)
     }
   }
+
+  const handleCommit = async () => {
+    if (!stagingMask || !uploadedImage) return
+
+    try {
+      const [previewUrl, brightenedMaskUrl] = await Promise.all([
+        createCroppedPreviewUrl(stagingMask, uploadedImage),
+        createBrightenedMaskUrl(stagingMask, uploadedImage)
+      ])
+
+      const newSubject: Subject = {
+        id: Date.now(),
+        name: `SUB_${String(subjects.length + 1).padStart(2, '0')}`,
+        color: stagingColor,
+        points: stagingPoints,
+        maskResult: stagingMask,
+        coloredMaskUrl: stagingColoredMaskUrl!,
+        previewUrl: previewUrl ?? undefined,
+        brightenedMaskUrl: brightenedMaskUrl ?? undefined,
+        duration: 0.1 // Default duration
+      }
+
+      setSubjects([...subjects, newSubject])
+      
+      // Reset staging
+      setStagingPoints([])
+      setStagingMask(null)
+      setStagingColoredMaskUrl(null)
+      
+    } catch (err) {
+      console.error('Commit error:', err)
+    }
+  }
+
+  const handleResetStaging = () => {
+    setStagingPoints([])
+    setStagingMask(null)
+    setStagingColoredMaskUrl(null)
+  }
+
+  const handleExitEditing = () => {
+    handleResetStaging()
+    setMode('arrange')
+  }
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    setSubjects(prev => {
+      if (fromIndex === toIndex) return prev
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+  }
+
+  // Determine Status and Color
+  let statusText = ''
+  let statusColor = '#FFFFFF'
+  
+  if (encodingProgress !== null) {
+    statusText = 'ENCODING'
+    statusColor = '#FFFF00'
+  } else if (mode === 'editing') {
+    statusText = 'EDITING'
+    statusColor = '#00FF00'
+  } else if (mode === 'previewing') {
+    statusText = 'PREVIEWING'
+    statusColor = '#00FFFF'
+  } else {
+    statusText = 'ARRANGE'
+    statusColor = '#FFFFFF'
+  }
+
+  // --- Render ---
+
+  const workspaceStyle = canvasWidth
+    ? ({ ['--canvas-width' as any]: `${canvasWidth}px` } as CSSProperties)
+    : undefined
 
   return (
     <main className={styles.main}>
-      <Header>
-        <StepNav 
-          steps={STEPS} 
-          currentStep={currentStep} 
-          onStepClick={handleStepClick} 
-        />
-      </Header>
+      <TopBar 
+        onExport={() => setIsExportOpen(true)}
+        onPlayToggle={togglePreview}
+        onLoopToggle={() => setIsLooping(prev => !prev)}
+        isPlaying={isPlaying}
+        isLooping={isLooping}
+        canPlay={canPlay}
+        showActions={isLayoutReady}
+        status={isLayoutReady ? statusText : undefined}
+        statusColor={statusColor}
+      />
       
-      <div className={styles.content}>
-        {renderContent()}
+      <div 
+        ref={workspaceRef}
+        className={`${styles.workspace} ${isLayoutReady ? styles.layoutReady : ''}`}
+        style={workspaceStyle}
+      >
+        {/* Left: Canvas */}
+        <div className={styles.canvasArea}>
+          <Canvas 
+            imageSrc={uploadedImage}
+            maskImageSrc={stagingColoredMaskUrl}
+            previewMaskSrc={previewMaskSrc}
+            points={stagingPoints}
+            color={stagingColor}
+            mode={mode}
+            encodingProgress={encodingProgress ?? undefined}
+            imageWidthPx={imageWidthPx ?? undefined}
+            onPointAdd={handlePointAdd}
+            onUpload={handleUpload}
+            onUseSample={handleUseSample}
+          />
+        </div>
+
+        {/* Center: Commit Dock */}
+        <div className={styles.dockArea}>
+          <CommitDock 
+            onAdd={handleCommit}
+            onReset={handleResetStaging}
+            onExit={handleExitEditing}
+            canAdd={!!stagingMask}
+            canReset={stagingPoints.length > 0}
+            mode={mode}
+          />
+        </div>
+
+        {/* Right: Timeline */}
+        <div className={styles.timelineArea}>
+          <AssetsTimeline 
+            subjects={subjects}
+            mode={mode}
+            onReorder={handleReorder}
+            onDelete={(id) => setSubjects(subjects.filter(s => s.id !== id))}
+            onDuplicate={(id) => {
+              const sub = subjects.find(s => s.id === id)
+              if (sub) {
+                setSubjects([...subjects, { ...sub, id: Date.now() }])
+              }
+            }}
+            onDurationChange={(id, delta) => {
+              setSubjects(subjects.map(s => {
+                 if (s.id === id) {
+                   const newDur = Math.max(0.05, (s.duration || 0.1) + delta)
+                   return { ...s, duration: parseFloat(newDur.toFixed(2)) }
+                 }
+                 return s
+              }))
+            }}
+            currentPlayingIndex={currentPlayingIndex}
+            previewStyle={previewStyle}
+            onPreviewStyleChange={setPreviewStyle}
+            bgm={bgm}
+            onBgmChange={setBgm}
+          />
+        </div>
       </div>
 
       <Footer 
-        modelProgress={modelProgress} 
-        modelReady={samStatus === 'model_ready' || samStatus === 'encoded'} 
+        modelProgress={typeof loadingProgress?.progress === 'number' ? loadingProgress.progress : 0} 
+        modelReady={isModelReady} 
+      />
+
+      <ExportModal
+        isOpen={isExportOpen}
+        formats={exportFormats}
+        cutoutModes={cutoutModes}
+        onFormatToggle={(format) =>
+          setExportFormats(prev =>
+            prev.includes(format) ? prev.filter(f => f !== format) : [...prev, format]
+          )
+        }
+        onCutoutModeToggle={(mode) =>
+          setCutoutModes(prev =>
+            prev.includes(mode) ? prev.filter(m => m !== mode) : [...prev, mode]
+          )
+        }
+        onCancel={() => setIsExportOpen(false)}
+        onDownload={handleExport}
+        isBusy={exportBusy}
+        note={exportNote}
+        progress={exportProgress}
       />
     </main>
   )

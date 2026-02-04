@@ -128,7 +128,7 @@ export function useSAM(autoLoad: boolean = true) {
 
     // Start loading model immediately if autoLoad is true
     if (autoLoad) {
-      worker.postMessage({ type: 'init' })
+      // worker.postMessage({ type: 'init' }) // Do not auto init
     }
 
     return () => {
@@ -176,6 +176,12 @@ export function useSAM(autoLoad: boolean = true) {
     setError(null)
   }, [])
 
+  const initModel = useCallback(() => {
+     if (workerRef.current) {
+        workerRef.current.postMessage({ type: 'init' })
+     }
+  }, [])
+
   return {
     status,
     loadingProgress,
@@ -185,5 +191,6 @@ export function useSAM(autoLoad: boolean = true) {
     encodeImage,
     decode,
     reset,
+    initModel
   }
 }

@@ -2,7 +2,7 @@
 
 import React from 'react'
 import styles from './Canvas.module.css'
-import type { Subject } from '@/app/page'
+import type { Subject } from '@/types'
 
 interface CanvasProps {
   image: string | null
@@ -54,19 +54,23 @@ export default function Canvas({
     >
       <img src={image} alt="Workspace" className={styles.canvasImage} />
       
-      {subjects.map((subject, index) => (
-        <div
-          key={subject.id}
-          className={`${styles.marker} ${activeSubjectId === subject.id ? styles.active : ''}`}
-          style={{
-            left: `${subject.point.x}%`,
-            top: `${subject.point.y}%`,
-            '--marker-color': subject.color,
-          } as React.CSSProperties}
-        >
-          {index + 1}
-        </div>
-      ))}
+      {subjects.map((subject, index) => {
+        const point = subject.points?.[0]
+        if (!point) return null
+        return (
+          <div
+            key={subject.id}
+            className={`${styles.marker} ${activeSubjectId === subject.id ? styles.active : ''}`}
+            style={{
+              left: `${point.x}%`,
+              top: `${point.y}%`,
+              '--marker-color': subject.color,
+            } as React.CSSProperties}
+          >
+            {index + 1}
+          </div>
+        )
+      })}
     </div>
   )
 }

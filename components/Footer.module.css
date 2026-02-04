@@ -1,0 +1,197 @@
+.footer {
+  position: relative;
+  border-top: 1px solid var(--gray-800);
+  height: var(--bar-height);
+  padding: 0;
+  background: var(--bg-primary);
+}
+
+/* Progress bar at top of footer */
+.progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--gray-800);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent-green);
+  transition: width 0.3s var(--ease-out-expo);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1440px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Model status breathing light */
+.statusLight {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusLight.ready {
+  background: var(--accent-green);
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.statusLight.loading {
+  background: var(--accent-yellow);
+  animation: breathe 1s ease-in-out infinite;
+}
+
+/* Tech info with tooltip */
+.techInfo {
+  position: relative;
+  cursor: help;
+}
+
+.link {
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) ease;
+  letter-spacing: 0.05em;
+}
+
+.techInfo:hover .link {
+  color: var(--text-primary);
+}
+
+.techTooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--gray-800);
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.techLabel {
+  font-family: var(--font-body);
+  font-size: 0.5rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.techValue {
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  color: var(--accent-green);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.divider {
+  font-size: 0.625rem;
+  color: var(--gray-600);
+}
+
+.social {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.socialIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) ease;
+}
+
+.socialIcon:hover {
+  color: var(--text-primary);
+}
+
+.donate {
+  position: relative;
+  cursor: pointer;
+}
+
+/* Donate button with transparent background */
+.donateButton {
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all var(--duration-fast) ease;
+}
+
+.donate:hover .donateButton {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.qrPopup {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--gray-800);
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.qrImage {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 0.5rem;
+}
+
+.qrHint {
+  font-family: var(--font-body);
+  font-size: 0.5rem;
+  text-align: center;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

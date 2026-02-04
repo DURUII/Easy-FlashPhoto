@@ -1,0 +1,73 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--gray-800);
+  height: 56px;
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  max-width: 1440px;
+  margin: 0 auto;
+  height: 100%;
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.logoText {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  transition: all var(--duration-fast) ease;
+}
+
+.logoText:hover {
+  animation: glitchText 0.3s var(--ease-in-out);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.4);
+}
+
+.version {
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  color: var(--text-secondary);
+  background: transparent;
+  height: 1.25rem; /* Fixed height for scroll mask */
+  overflow: hidden;
+  padding: 0; /* Remove padding from container to handle inside */
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  cursor: default;
+}
+
+.versionInner {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.version span {
+  display: block;
+  height: 1.25rem;
+  line-height: 1.25rem;
+  padding: 0 0.4rem;
+}
+
+.version:hover .versionInner {
+  transform: translateY(-50%);
+}
+
+.navArea {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: auto;
+}
