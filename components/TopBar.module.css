@@ -31,6 +31,16 @@
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 
+.tagline {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  max-width: 420px;
+}
+
 .status {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -94,6 +104,70 @@
   cursor: pointer;
   transition: all 0.2s ease;
   text-transform: uppercase;
+}
+
+.about {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.aboutButton {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--white);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.aboutButton:hover {
+  border-color: var(--gray-600);
+}
+
+.aboutTooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--gray-800);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+}
+
+.about:hover .aboutTooltip {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.aboutTitle {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4rem;
+  display: block;
+}
+
+.aboutText {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .actionButton:hover:not(:disabled) {

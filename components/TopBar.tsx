@@ -19,6 +19,9 @@ export default function TopBar({
     <header className={styles.topBar}>
       <div className={styles.left}>
         <div className={styles.logo}>IMAGEGLITCH</div>
+        <div className={styles.tagline}>
+          FLASHPHOTO / GLITCH ART VIDEO / 照片通电
+        </div>
         {status && (
           <div 
             className={styles.status}
@@ -34,6 +37,17 @@ export default function TopBar({
 
       {showActions && (
         <div className={styles.right}>
+          <div className={styles.about}>
+            <span className={styles.aboutButton}>ABOUT</span>
+            <div className={styles.aboutTooltip}>
+              <span className={styles.aboutTitle}>FLASHPHOTO / IMAGEGLITCH</span>
+              <p className={styles.aboutText}>
+                Online glitch art video generator for rhythm-synced flicker and electro-cutout effects.
+                Photo to video, AI segmentation, and social-ready outputs for TikTok, Instagram, and
+                Xiaohongshu. 支持故障艺术、照片闪烁、在线抠图与 AI 主体分割。
+              </p>
+            </div>
+          </div>
           <button className={styles.actionButton} onClick={onHelp}>Help</button>
           <button className={`${styles.actionButton} ${styles.exportButton}`} onClick={onExport}>
             Export

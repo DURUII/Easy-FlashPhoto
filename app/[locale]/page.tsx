@@ -5,7 +5,7 @@ import { zipSync } from 'fflate'
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { fetchFile } from '@ffmpeg/util'
 import { GIFEncoder, quantize, applyPalette } from 'gifenc'
-import styles from './page.module.css'
+import styles from '../page.module.css'
 import TopBar from '@/components/TopBar'
 import Footer from '@/components/Footer'
 import Canvas from '@/components/editor/Canvas'
@@ -157,6 +157,20 @@ const createCroppedPreviewUrl = async (maskResult: MaskResult, imageUrl: string)
 // --- Main Component ---
 
 export default function Home() {
+  // Title flash
+  useEffect(() => {
+    const baseTitle = 'FLASHPHOTO'
+    let on = false
+    const interval = window.setInterval(() => {
+      on = !on
+      document.title = on ? `⚡ ${baseTitle}` : baseTitle
+    }, 1200)
+    document.title = baseTitle
+    return () => {
+      window.clearInterval(interval)
+      document.title = baseTitle
+    }
+  }, [])
   // State
   const [mode, setMode] = useState<AppMode>('editing') // Default to editing
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
