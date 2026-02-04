@@ -12,9 +12,9 @@ const EXPORT_OPTIONS = [
 ]
 
 const MOCK_SUBJECTS: Subject[] = [
-  { id: 1, name: 'SUBJECT_01', color: '#FFFFFF', point: { x: 30, y: 50 } },
-  { id: 2, name: 'SUBJECT_02', color: '#00FF00', point: { x: 50, y: 50 } },
-  { id: 3, name: 'SUBJECT_03', color: '#FF00FF', point: { x: 70, y: 50 } },
+  { id: 1, name: 'SUBJECT_01', color: '#FFFFFF', points: [{ x: 30, y: 50, label: 1 }] },
+  { id: 2, name: 'SUBJECT_02', color: '#00FF00', points: [{ x: 50, y: 50, label: 1 }] },
+  { id: 3, name: 'SUBJECT_03', color: '#FF00FF', points: [{ x: 70, y: 50, label: 1 }] },
 ]
 
 interface ExportStepProps {
@@ -117,25 +117,30 @@ export default function ExportStep({ mockData, appState, onPrev }: ExportStepPro
                   alt="Preview"
                   className={styles.previewImage}
                   style={{
-                    filter: currentIndex >= 0 ? 'brightness(0.2)' : 'brightness(1)',
+                    // filter: currentIndex >= 0 ? 'brightness(0.2)' : 'brightness(1)',
+                    opacity: 0, // Debug: Hide image to check glitch layer visibility
                   }}
                 />
                 
                 {/* Glitch effect simulation */}
-                {subjects.map((subject, index) => (
-                  <div
-                    key={subject.id}
-                    className={styles.glitchLayer}
-                    style={{
-                      left: `${subject.point.x - 10}%`,
-                      top: `${subject.point.y - 15}%`,
-                      width: '20%',
-                      height: '30%',
-                      opacity: index <= currentIndex ? 1 : 0,
-                      background: `radial-gradient(circle, ${subject.color}40 0%, transparent 70%)`,
-                    }}
-                  />
-                ))}
+                {subjects.map((subject, index) => {
+                  const point = subject.points?.[0] || { x: 50, y: 50, label: 1 }
+                  return (
+                    <div
+                      key={subject.id}
+                      className={styles.glitchLayer}
+                      style={{
+                        left: `${point.x - 10}%`,
+                        top: `${point.y - 15}%`,
+                        width: '20%',
+                        height: '30%',
+                        opacity: index <= currentIndex ? 1 : 0,
+                        backgroundColor: subject.color,
+                        boxShadow: `0 0 20px ${subject.color}`,
+                      }}
+                    />
+                  )
+                })}
               </div>
 
               <div className={styles.playerControls}>

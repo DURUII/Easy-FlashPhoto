@@ -26,11 +26,14 @@ export interface BGM {
   file: string | null
 }
 
+export type GlitchPreset = 'solid' | 'brightened'
+
 export interface AppState {
   uploadedImage: string | null
   selectedSubjects: Subject[]
   selectedBgm: BGM | null
   exportFormat: 'mp4' | 'gif' | 'livephoto'
+  glitchPreset: GlitchPreset
 }
 
 const STEPS = [
@@ -121,6 +124,17 @@ const getMaskBounds = (imageData: ImageData) => {
   }
 }
 
+// Recover mask data from colored mask URL (for restored sessions)
+const recoverMaskData = async (url: string, width: number, height: number): Promise<ImageData> => {
+  const img = await loadImage(url)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
+}
+
 // Create brightened mask overlay (original image with mask area brightness +100)
 const createBrightenedMaskUrl = async (maskResult: MaskResult, imageUrl: string): Promise<string | null> => {
   const image = await loadImage(imageUrl)
@@ -208,6 +222,7 @@ const buildCachePayload = (uploadedImage: string | null, subjects: Subject[]) =>
       points: s.points,
       coloredMaskUrl: s.coloredMaskUrl,
       previewUrl: s.previewUrl,
+      brightenedMaskUrl: s.brightenedMaskUrl,
       maskScore: s.maskScore,
     })),
   }
@@ -220,6 +235,7 @@ export default function Home() {
     selectedSubjects: [],
     selectedBgm: null,
     exportFormat: 'mp4',
+    glitchPreset: 'brightened',
   })
   
   // Current subject being edited (adding points to refine mask)
@@ -230,9 +246,15 @@ export default function Home() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [undoStack, setUndoStack] = useState<Subject[][]>([])
+  const [hasMounted, setHasMounted] = useState(false)
 
   const sourceContainerRef = useRef<HTMLDivElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
   const [imageMeta, setImageMeta] = useState<{ width: number; height: number } | null>(null)
   const [displayBox, setDisplayBox] = useState<{ width: number; height: number; offsetX: number; offsetY: number } | null>(null)
 
@@ -246,7 +268,7 @@ export default function Home() {
   } = useSAM(true) // Start loading model immediately
 
   useEffect(() => {
-    if (!PERSIST_ENABLED) return
+    if (!PERSIST_ENABLED || !hasMounted) return
     const restore = async () => {
       try {
         setIsRestoring(true)
@@ -266,7 +288,7 @@ export default function Home() {
       }
     }
     restore()
-  }, [])
+  }, [hasMounted])
 
   useEffect(() => {
     // Sync sequence order with subjects (default: order of creation)
@@ -302,6 +324,62 @@ export default function Home() {
       encodeImage(appState.uploadedImage)
     }
   }, [currentStep, appState.uploadedImage, isEncoded, samStatus, encodeImage])
+
+  // Generate missing brightened masks when switching to 'brightened' preset
+  useEffect(() => {
+    if (currentStep !== 3 || appState.glitchPreset !== 'brightened' || !appState.uploadedImage) return
+
+    const subjectsMissingUrl = appState.selectedSubjects.filter(s => !s.brightenedMaskUrl)
+    
+    if (subjectsMissingUrl.length === 0) return
+
+    const generateMissingUrls = async () => {
+      const newSubjects = [...appState.selectedSubjects]
+      let hasUpdates = false
+      
+      try {
+        // Load image once to get dimensions
+        const image = await loadImage(appState.uploadedImage!)
+        const width = image.naturalWidth
+        const height = image.naturalHeight
+
+        for (let i = 0; i < newSubjects.length; i++) {
+          const s = newSubjects[i]
+          if (!s.brightenedMaskUrl) {
+            let maskResult = s.maskResult
+            
+            // If maskResult is missing (restored from cache), try to recover from coloredMaskUrl
+            if (!maskResult && s.coloredMaskUrl) {
+               const recoveredData = await recoverMaskData(s.coloredMaskUrl, width, height)
+               maskResult = {
+                 imageData: recoveredData,
+                 width,
+                 height,
+                 score: s.maskScore || 0,
+                 dataUrl: ''
+               }
+            }
+
+            if (maskResult) {
+              const url = await createBrightenedMaskUrl(maskResult, appState.uploadedImage!)
+              if (url) {
+                newSubjects[i] = { ...s, brightenedMaskUrl: url }
+                hasUpdates = true
+              }
+            }
+          }
+        }
+
+        if (hasUpdates) {
+          updateAppState({ selectedSubjects: newSubjects })
+        }
+      } catch (err) {
+        console.error('Error generating brightened masks:', err)
+      }
+    }
+
+    generateMissingUrls()
+  }, [currentStep, appState.glitchPreset, appState.selectedSubjects, appState.uploadedImage])
 
   const handleStepClick = (stepId: number) => {
     if (stepId <= currentStep || (stepId === 2 && appState.uploadedImage)) {
@@ -843,42 +921,52 @@ export default function Home() {
               </div>
               <div className={styles.sourceImage}>
                 <div className={styles.imageFrame}>
-                  <img src={appState.uploadedImage || ''} alt="Final Preview" className={styles.sourceImg} />
-                  {/* Brightened mask overlays - each subject flashes in sequence */}
-                  {appState.selectedSubjects.map((s, i) => s.brightenedMaskUrl && (
-                    <img
-                      key={s.id}
-                      src={s.brightenedMaskUrl}
-                      alt={s.name}
-                      className={styles.flashMask}
-                      style={{ 
-                        animationDelay: `${i * 0.1}s`,
-                        animationDuration: `${cycleDuration}s`,
-                      }}
-                    />
-                  ))}
-                  {/* Sequence indicators on image */}
-                  <div className={styles.sequenceBadge}>
+                    <img 
+                    src={appState.uploadedImage || ''} 
+                    alt="Final Preview" 
+                    className={styles.sourceImg} 
+                  />
+
+                    {/* Brightened mask overlays - each subject flashes in sequence */}
                     {appState.selectedSubjects.map((s, i) => (
-                      <div key={s.id} className={styles.sequenceDot} style={{ background: s.color }}>
-                        {i + 1}
-                      </div>
+                      <img
+                        key={s.id}
+                        src={appState.glitchPreset === 'solid' ? (s.coloredMaskUrl || '') : (s.brightenedMaskUrl || s.coloredMaskUrl)}
+                        alt={s.name}
+                        className={styles.flashMask}
+                        style={{ 
+                          animationDelay: `${i * 0.1}s`,
+                          animationDuration: `${cycleDuration}s`,
+                          zIndex: 10,
+                        }}
+                      />
                     ))}
-                  </div>
                 </div>
-              </div>
-              <div className={styles.sequenceList}>
-                {appState.selectedSubjects.map((s, i) => (
-                  <div key={s.id} className={styles.sequenceItem}>
-                    <div className={styles.sequenceNumber} style={{ background: s.color }}>{i + 1}</div>
-                    <span>{s.name}</span>
-                  </div>
-                ))}
               </div>
             </div>
 
             {/* Right: Settings */}
             <div className={styles.exportSettings}>
+              <div className={styles.settingSection}>
+                <div className={styles.panelHeader}>
+                  <span>GLITCH PRESET</span>
+                </div>
+                <div className={styles.formatGrid}>
+                  <button
+                    className={`${styles.formatOption} ${appState.glitchPreset === 'solid' ? styles.formatSelected : ''}`}
+                    onClick={() => updateAppState({ glitchPreset: 'solid' })}
+                  >
+                    SOLID COLOR
+                  </button>
+                  <button
+                    className={`${styles.formatOption} ${appState.glitchPreset === 'brightened' ? styles.formatSelected : ''}`}
+                    onClick={() => updateAppState({ glitchPreset: 'brightened' })}
+                  >
+                    BRIGHTENED
+                  </button>
+                </div>
+              </div>
+
               <div className={styles.settingSection}>
                 <div className={styles.panelHeader}>
                   <span>AUDIO TRACK</span>
