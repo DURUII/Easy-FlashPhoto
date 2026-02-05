@@ -62,4 +62,4 @@ UPLOAD -> SELECT -> EXPORT
 
 - [x] the core segmentation algorithm has been implemented
 - [x] the ux needs major redesign (upload state power-on pass 1)
-- [ ] further ux polish (select + export screens)
+- [x] further ux polish (select + export screens)
