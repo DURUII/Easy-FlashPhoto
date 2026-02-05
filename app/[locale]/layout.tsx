@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import '../globals.css'
 import { defaultLocale, locales, type Locale } from '../../i18n'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 const siteName = 'FLASHPHOTO / IMAGEGLITCH'
 const siteDescription =
@@ -99,7 +100,10 @@ export default function RootLayout({
 
   return (
     <html lang={locale}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <SpeedInsights />
+      </body>
     </html>
   )
 }
