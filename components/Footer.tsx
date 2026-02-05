@@ -6,16 +6,30 @@ import styles from './Footer.module.css'
 interface FooterProps {
   modelProgress?: number
   modelReady?: boolean
+  modelStatus?: string
 }
 
-export default function Footer({ modelProgress = 0, modelReady = false }: FooterProps) {
+export default function Footer({ modelProgress = 0, modelReady = false, modelStatus = 'idle' }: FooterProps) {
   const [showQR, setShowQR] = useState(false)
   const [showTech, setShowTech] = useState(false)
   
   const progress = modelReady ? 100 : Math.max(0, Math.min(100, Math.round(modelProgress * 100)))
+  const isLoading = !modelReady
+  const statusLabel =
+    modelStatus === 'decoding' ? 'DECODING MASKS' :
+    modelStatus === 'encoding' ? 'BUILDING EMBEDDINGS' :
+    modelStatus === 'loading_model' ? 'DOWNLOADING MODEL' :
+    modelStatus === 'error' ? 'MODEL ERROR' :
+    'RENDERING MASK'
 
   return (
     <footer className={styles.footer}>
+      <div className={styles.progressBar} aria-hidden="true">
+        <div
+          className={`${styles.progressFill} ${isLoading ? styles.progressActive : ''}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
       
       <div className={styles.container}>
         <div className={styles.left}>
@@ -29,7 +43,7 @@ export default function Footer({ modelProgress = 0, modelReady = false }: Footer
             onMouseLeave={() => setShowTech(false)}
           >
             <span className={styles.link}>
-              100% LOCAL PROCESSING & NO DATA COLLECTED
+              {isLoading ? `${statusLabel} ${progress}%` : '100% LOCAL PROCESSING & NO DATA COLLECTED'}
             </span>
             {showTech && (
               <div className={styles.techTooltip}>

@@ -1,7 +1,11 @@
 import { env, SamModel, AutoProcessor, RawImage, Tensor } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.14.0';
 
-// Skip local model check - download from Hugging Face Hub
-env.allowLocalModels = false;
+// Load models and wasm from same-origin files (public/models/, public/wasm/)
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
+env.localModelPath = `${self.location.origin}/models/`;
+env.useBrowserCache = true;
+env.backends.onnx.wasm.wasmPaths = `${self.location.origin}/wasm/`;
 
 // Singleton pattern for lazy-loading model and processor
 class SegmentAnythingSingleton {

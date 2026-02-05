@@ -1021,6 +1021,7 @@ export default function Home() {
       <Footer 
         modelProgress={typeof loadingProgress?.progress === 'number' ? loadingProgress.progress : 0} 
         modelReady={isModelReady} 
+        modelStatus={samStatus}
       />
 
       <OnboardingOverlay
