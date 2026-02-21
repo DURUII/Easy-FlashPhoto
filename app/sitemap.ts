@@ -11,10 +11,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = getBaseUrl()
   const now = new Date()
 
-  return locales.map((locale) => ({
-    url: `${baseUrl}/${locale}`,
-    lastModified: now,
-    changeFrequency: 'weekly',
-    priority: locale === 'en' ? 1 : 0.9,
-  }))
+  return locales.flatMap((locale) => ([
+    {
+      url: `${baseUrl}/${locale}`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: locale === 'en' ? 1 : 0.9,
+    },
+    {
+      url: `${baseUrl}/${locale}/flash-photo`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: locale === 'en' ? 0.95 : 0.85,
+    },
+    {
+      url: `${baseUrl}/${locale}/lidar`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: locale === 'en' ? 0.7 : 0.6,
+    },
+  ]))
 }

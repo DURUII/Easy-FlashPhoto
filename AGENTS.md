@@ -63,3 +63,4 @@ UPLOAD -> SELECT -> EXPORT
 - [x] the core segmentation algorithm has been implemented
 - [x] the ux needs major redesign (upload state power-on pass 1)
 - [x] further ux polish (select + export screens)
+- [x] homepage upgraded into effect hub with reusable shared upload across flash-photo and lidar routes

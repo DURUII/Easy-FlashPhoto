@@ -1,0 +1,31 @@
+.viewport {
+  --duration: 36s;
+  --gap: 0.75rem;
+  display: flex;
+  overflow: hidden;
+  gap: var(--gap);
+  width: 100%;
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: marquee var(--duration) linear infinite;
+}
+
+.reverse {
+  animation-direction: reverse;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--gap)));
+  }
+}

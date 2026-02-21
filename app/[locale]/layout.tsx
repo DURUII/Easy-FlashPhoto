@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import '../globals.css'
 import { defaultLocale, locales, type Locale } from '../../i18n'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import PageTransition from '@/components/PageTransition'
 
 const siteName = 'FLASHPHOTO / IMAGEGLITCH'
 const siteDescription =
@@ -101,7 +102,7 @@ export default function RootLayout({
   return (
     <html lang={locale}>
       <body>
-        {children}
+        <PageTransition>{children}</PageTransition>
         <SpeedInsights />
       </body>
     </html>

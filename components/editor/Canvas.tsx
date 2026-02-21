@@ -178,6 +178,14 @@ export default function Canvas({
     }
   }
 
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && onUpload) {
+      onUpload(file)
+    }
+    e.currentTarget.value = ''
+  }
+
   if (!imageSrc) {
     return (
       <div 
@@ -226,12 +234,12 @@ export default function Canvas({
             </button>
           </div>
 
-          <input 
+          <input
             ref={fileInputRef}
-            type="file" 
-            hidden 
+            type="file"
+            hidden
             accept="image/*"
-            onChange={e => e.target.files?.[0] && onUpload?.(e.target.files[0])}
+            onChange={handleFileInput}
           />
         </div>
       </div>
@@ -257,6 +265,29 @@ export default function Canvas({
           width: imageWidthPx ? `${imageWidthPx}px` : undefined
         }}
       >
+        <div className={styles.imageActions}>
+          <button
+            className={styles.replaceButton}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              fileInputRef.current?.click()
+            }}
+          >
+            REPLACE IMAGE
+          </button>
+          <button
+            className={styles.sampleSwapButton}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onUseSample?.()
+            }}
+          >
+            USE SAMPLE
+          </button>
+        </div>
+
         <img 
           src={imageSrc} 
           alt="Source" 
@@ -309,6 +340,13 @@ export default function Canvas({
           )
         })}
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        hidden
+        accept="image/*"
+        onChange={handleFileInput}
+      />
     </div>
   )
 }
