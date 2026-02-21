@@ -171,30 +171,7 @@
   pointer-events: none;
 }
 
-.routeCard::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  z-index: 1;
-  padding: 1px;
-  pointer-events: none;
-  background:
-    conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      rgba(255, 255, 255, 0.94) 16deg,
-      transparent 50deg,
-      transparent 180deg,
-      var(--route-accent) 226deg,
-      transparent 274deg,
-      transparent 360deg
-    );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.36;
-  animation: frameSpin 4.4s linear infinite, framePulse 1.9s var(--ease-out-expo) infinite;
-}
+
 
 .routeCard > * {
   position: relative;
@@ -208,11 +185,7 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
 }
 
-.routeCard:hover::after,
-.routeCard:focus-visible::after {
-  opacity: 0.8;
-  animation-duration: 2.9s, 1.45s;
-}
+
 
 .routeCard:focus-visible {
   outline: 2px solid var(--route-accent);
@@ -284,23 +257,7 @@
   }
 }
 
-@keyframes frameSpin {
-  to {
-    transform: rotate(1turn);
-  }
-}
 
-@keyframes framePulse {
-  0% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 0.64;
-  }
-  100% {
-    opacity: 0.35;
-  }
-}
 
 @media (max-width: 960px) {
   .heroArea {
